@@ -16,6 +16,35 @@ from skimage import io
 from compute_mean import compute_mean 
 
 
+
+
+def vis_square(data):
+    """Take an array of shape (n, height, width) or (n, height, width, 3)
+       and visualize each (height, width) thing in a grid of size approx. sqrt(n) by sqrt(n)"""
+    
+    # normalize data for display
+    data = (data - data.min()) / (data.max() - data.min())
+    
+    # force the number of filters to be square
+    n = int(np.ceil(np.sqrt(data.shape[0])))
+    padding = (((0, n ** 2 - data.shape[0]),
+               (0, 1), (0, 1))                 # add some space between filters
+               + ((0, 0),) * (data.ndim - 3))  # don't pad the last dimension (if there is one)
+    data = np.pad(data, padding, mode='constant', constant_values=1)  # pad with ones (white)
+    
+    # tile the filters into an image
+    data = data.reshape((n, n) + data.shape[1:]).transpose((0, 2, 1, 3) + tuple(range(4, data.ndim + 1)))
+    data = data.reshape((n * data.shape[1], n * data.shape[3]) + data.shape[4:])
+    
+    plt.imshow(data); plt.axis('off')
+
+	cv2.waitKey(0)
+
+
+
+
+
+
 def main(argv):
 	
 	model_filename = ''
@@ -67,15 +96,8 @@ def main(argv):
 	               caffe.TEST)     # use test mode (e.g., don't perform dropout)
 
 
-	#CNN data layer specification
-	net.blobs['data'].reshape(50,        # batch size
-                  3,         # 3-channel (BGR) images
-                  227, 227)  # image size is 227x227
-
-
 	transformer = caffe.io.Transformer({'data': net.blobs['data'].data.shape})
-	transformer.set_raw_scale('data', 255) #set pixel values in range [0,255]
-	transformer.set_transpose('data', (2,0,1)) #Set BGR 
+	transformer.set_transpose('data', (2,0,1)) #move image channels to outermost dimension 
 
 	input_image_set = []
 
@@ -89,24 +111,37 @@ def main(argv):
 
 
 
-	compute_mean(input_image_set, img_mean_filename)
+#	compute_mean(input_image_set, img_mean_filename)
+#	mu = np.load(img_mean_filename + ".npy")
+#	meanSubtractor = caffe.io.Transformer({'data': net.blobs['data'].data.shape})
+#	meanSubtractor.set_mean('data', mu)            # subtract the dataset-mean value in each channel
+#	for img in input_image_set:
+#		img = meanSubtractor.preprocess('data', img)
 
 
-	mu = np.load(img_mean_filename + ".npy")
+	#bs = len(input_image_set)  # batch size
+	#in_shape = net.blobs['data'].data.shape
+	#in_shape = [bs, in_shape[1], in_shape[2], in_shape[3]] # set new batch size
+	#net.blobs['data'].reshape(*in_shape)
+	#net.reshape()
 
 
-	meanSubtractor = caffe.io.Transformer({'data': net.blobs['data'].data.shape})
-
-	meanSubtractor.set_mean('data', mu)            # subtract the dataset-mean value in each channel
-
-	#for img in input_image_set:
-
-		#img = meanSubtractor.preprocess('data', img)
+	for layer_name, blob in net.blobs.iteritems():
+		print layer_name + '\t' + str(blob.data.shape)
 
 
-	#out = net.forward_all(data=np.asarray([transformer.preprocess('data', input_image_set)]))
 
+	for img in input_image_set:
 
+		net.blobs['data'].data[...] = img
+
+		out = net.forward()
+
+		feat = net.blobs['fc25'].data[0]
+
+		print feat
+
+	#vis_square(feat)
 
 
 

@@ -1,5 +1,4 @@
 import sys
-sys.path.append("/home/bamos/repos/caffe-local/python")
 
 import argparse
 import numpy as np
