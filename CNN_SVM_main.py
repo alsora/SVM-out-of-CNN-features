@@ -13,6 +13,8 @@ from caffe.io import array_to_blobproto
 from collections import defaultdict
 from skimage import io
 
+from compute_mean import compute_mean 
+
 
 def main(argv):
 	
@@ -41,10 +43,7 @@ def main(argv):
 	print 'image file is "', img_folder_name
 
 
-	caffe_root = '/home/dallo/caffe/'  # this file should be run from {caffe_root}/examples (otherwise change this line)
-	sys.path.insert(0, caffe_root + 'python')
-
-
+	#files/folders creation
 	if os.path.isfile(model_filename):
 	    print 'CaffeNet found.'
 	else:
@@ -52,7 +51,15 @@ def main(argv):
 	    sys.exit(2)
 
 
+	img_mean_foldername = "mean_data"
 
+	if not os.path.exists(img_mean_foldername):
+		os.makedirs(img_mean_foldername)
+
+	img_mean_filename = img_mean_foldername + '/mean'
+		
+
+	#CNN creation
 	caffe.set_mode_cpu()
 
 	net = caffe.Net(model_filename,      # defines the structure of the model
@@ -60,32 +67,49 @@ def main(argv):
 	               caffe.TEST)     # use test mode (e.g., don't perform dropout)
 
 
-	img_mean_filename = 'image_set_mean'
-	#os.system("/home/dallo/CNN_SVM/compute_image_mean.py " +  img_mean_filename + " " + img_folder_name)
-		
+	#CNN data layer specification
+	net.blobs['data'].reshape(50,        # batch size
+                  3,         # 3-channel (BGR) images
+                  227, 227)  # image size is 227x227
 
 
+	transformer = caffe.io.Transformer({'data': net.blobs['data'].data.shape})
+	transformer.set_raw_scale('data', 255) #set pixel values in range [0,255]
+	transformer.set_transpose('data', (2,0,1)) #Set BGR 
+
+	input_image_set = []
 
 	for img_name in os.listdir(img_folder_name):
 
-
-		transformer = caffe.io.Transformer({'data': net.blobs['data'].data.shape})
-		#transformer.set_transpose('data', (2,0,1))
-
-		net.blobs['data'].reshape(50,        # batch size
-                          3,         # 3-channel (BGR) images
-                          227, 227)  # image size is 227x227
-
-
 		image = caffe.io.load_image(img_folder_name + img_name)
-
-
 
 		transformed_image = transformer.preprocess('data', image)
 
-		print img_name 
-		print image.shape 
-		print transformed_image.shape
+		input_image_set.append(transformed_image)
+
+
+
+	compute_mean(input_image_set, img_mean_filename)
+
+
+	mu = np.load(img_mean_filename + ".npy")
+
+
+	meanSubtractor = caffe.io.Transformer({'data': net.blobs['data'].data.shape})
+
+	meanSubtractor.set_mean('data', mu)            # subtract the dataset-mean value in each channel
+
+	#for img in input_image_set:
+
+		#img = meanSubtractor.preprocess('data', img)
+
+
+	#out = net.forward_all(data=np.asarray([transformer.preprocess('data', input_image_set)]))
+
+
+
+
+
 
 if __name__=='__main__':	
 	main(sys.argv[1:])
