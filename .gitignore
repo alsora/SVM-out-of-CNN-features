@@ -1,6 +1,7 @@
 *~
 *.pyc
 
+VOC2007
 prototxt/
 weights/
 images/

@@ -8,6 +8,9 @@ import numpy as np
 import sys, getopt
 import cv2
 import os
+import pickle
+from sklearn import svm
+import time
 
 from caffe.io import array_to_blobproto
 from collections import defaultdict
@@ -38,9 +41,77 @@ def vis_square(data):
     
     plt.imshow(data); plt.axis('off')
 
-	cv2.waitKey(0)
+	#cv2.waitKey(0)
 
 
+def splitDataset(allNamesListFile, trainPercentage):
+
+
+	#Open allNamesListFile, and split the data into:
+
+	listImagesNamesTrain = "listImagesNamesTrain.txt"  
+	listImagesNamesTest = "listImagesNamesTest.txt"
+
+	#trainFile = open(listImagesNamesTrain, "w")
+	#trainFile.write('something')
+	#trainFile.close()
+
+	#testFile = open(listImagesNamesTest, "w")
+	#testFile.write('something')
+	#testFile.close()
+
+	return [listImagesNamesTrain, listImagesNamesTest]
+
+
+
+def createSamplesDatastructures(samplesListFileName):
+
+	imagesFolderPath = "VOC2007/JPEGImages/"
+	annotationsFolderPath = "VOC2007/Annotations/"
+
+	samplesNames = []
+	samplesImages = []
+	samplesLabels = []
+
+	with open(samplesListFileName,'r') as fTrain:
+		for sampleName in (fTrain.read().splitlines()): 
+			
+			samplesNames.append(sampleName)
+
+			imageCompletePath = imagesFolderPath + sampleName + '.jpg'
+			image = caffe.io.load_image(imageCompletePath)
+			samplesImages.append(image)
+
+			annotationCompletePath = annotationsFolderPath + sampleName + '.xml'
+			#label = readLabelFromAnnotation(annotationCompletePath)
+			#samplesLabels.append(label)
+
+
+	return [samplesNames, samplesImages, samplesLabels]
+
+
+
+def readLabelFromAnnotation(annotationFileName):
+
+
+	#Parse the given annotation file and read the label 
+
+
+	return label
+
+
+
+def extractFeatures(imageSet, net, extractionLayerName):
+
+	featuresVector = []
+	
+	for image in imageSet:
+		net.blobs['data'].data[...] = image
+		net.forward()
+		features = net.blobs[extractionLayerName].data[0]
+		featuresVector.append(features.flatten())
+
+	return featuresVector
 
 
 
@@ -54,94 +125,127 @@ def main(argv):
 		opts, args = getopt.getopt(argv, "hm:w:i:")
 		print opts
 	except getopt.GetoptError:
-		print 'CNN_SVM_main.py -m <model_file> -w <output_file> -i <img_folder>'
+		print 'CNN_SVM_main.py -m <model_file> -w <output_file> -i <img_files_list>'
 		sys.exit(2)
 	for opt, arg in opts:
 		if opt == '-h':
-			print 'CNN_SVM_main.py -m <model_file> -w <weight_file> -i <img_folder>'
+			print 'CNN_SVM_main.py -m <model_file> -w <weight_file> -i <img_files_list>'
 			sys.exit()
 		elif opt == "-m":
 			model_filename = arg
 		elif opt == "-w":
 			weight_filename = arg
 		elif opt == "-i":
-			img_folder_name = arg
+			listImagesNames = arg
 
 	print 'model file is "', model_filename
 	print 'weight file is "', weight_filename
-	print 'image file is "', img_folder_name
+	print 'image file is "', listImagesNames
 
 
-	#files/folders creation
+	caffe.set_mode_cpu()
+
 	if os.path.isfile(model_filename):
-	    print 'CaffeNet found.'
+	    print 'Caffe model found.'
 	else:
 	    print 'Caffe model NOT found...'
 	    sys.exit(2)
 
 
-	img_mean_foldername = "mean_data"
+	listImagesNames = "listImagesNames.txt"
+	trainDataPercentage = 0.7
+	
+	#Given file listImagesNames and percentage-> listImagesNamesTrain listImagesNamesTest
+	[listImagesNamesTrain, listImagesNamesTest] = splitDataset(listImagesNames, trainDataPercentage)
 
-	if not os.path.exists(img_mean_foldername):
-		os.makedirs(img_mean_foldername)
 
-	img_mean_filename = img_mean_foldername + '/mean'
-		
+	#Load all images in data structure -> imagesTrain imagesTest
+	[filesTrainNames, imagesTrain, labelsTrain] = createSamplesDatastructures(listImagesNamesTrain)
+	[filesTestNames, imagesTest, labelsTest] = createSamplesDatastructures(listImagesNamesTest)
+
+
+	labelsTrain = ['car','airplane','airplane']
+	labelsTest = ['car', 'airplane']
+
 
 	#CNN creation
-	caffe.set_mode_cpu()
-
 	net = caffe.Net(model_filename,      # defines the structure of the model
 	               weight_filename,  # contains the trained weights
-	               caffe.TEST)     # use test mode (e.g., don't perform dropout)
+	              caffe.TEST)     # use test mode (e.g., don't perform dropout)
 
+
+	extractionLayerName = 'fc25'
 
 	transformer = caffe.io.Transformer({'data': net.blobs['data'].data.shape})
 	transformer.set_transpose('data', (2,0,1)) #move image channels to outermost dimension 
 
-	input_image_set = []
-
-	for img_name in os.listdir(img_folder_name):
-
-		image = caffe.io.load_image(img_folder_name + img_name)
-
-		transformed_image = transformer.preprocess('data', image)
-
-		input_image_set.append(transformed_image)
 
 
+	#Update the sets of images by transforming them according to Transformer
+	for  index in range(len(imagesTrain)):
+		imagesTrain[index] = transformer.preprocess('data', imagesTrain[index])
 
-#	compute_mean(input_image_set, img_mean_filename)
-#	mu = np.load(img_mean_filename + ".npy")
-#	meanSubtractor = caffe.io.Transformer({'data': net.blobs['data'].data.shape})
-#	meanSubtractor.set_mean('data', mu)            # subtract the dataset-mean value in each channel
-#	for img in input_image_set:
-#		img = meanSubtractor.preprocess('data', img)
-
-
-	#bs = len(input_image_set)  # batch size
-	#in_shape = net.blobs['data'].data.shape
-	#in_shape = [bs, in_shape[1], in_shape[2], in_shape[3]] # set new batch size
-	#net.blobs['data'].reshape(*in_shape)
-	#net.reshape()
+	for  index in range(len(imagesTest)):
+		imagesTest[index] = transformer.preprocess('data', imagesTest[index])		
 
 
-	for layer_name, blob in net.blobs.iteritems():
-		print layer_name + '\t' + str(blob.data.shape)
+	#Forward the net on all images -> featureVectorsTrain featureVectorsTest
+	featureVectorsTrain = []
+	featureVectorsTest = []
+	
+	t1 = time.time()
+	featureVectorsTrain = extractFeatures(imagesTrain, net, extractionLayerName)
+	featureVectorsTest = extractFeatures(imagesTest, net, extractionLayerName)
+	print 'Features extraction took ',(time.time() - t1) ,' seconds'
+
+	#Dump features in 2 files -> trainFeatures testFeatures
+	trainFeaturesFileName = 'trainFeatures.b'
+	testFeaturesFileName =  'testFeatures.b'
+	
+	with open(trainFeaturesFileName, 'wb') as trainFeaturesFile:
+		pickle.dump((filesTrainNames, featureVectorsTrain), trainFeaturesFile)
+
+	with open(testFeaturesFileName, 'wb') as testFeaturesFile:
+		pickle.dump((filesTestNames, featureVectorsTest), testFeaturesFile)	
 
 
 
-	for img in input_image_set:
+	#Load features from a previously dumped file
+	with open(trainFeaturesFileName, 'rb') as trainFeaturesFile:
+		(filesTrainNames, featureVectorsTrain) = pickle.load(trainFeaturesFile)
+		featureVectorsTrain = np.array(featureVectorsTrain)
 
-		net.blobs['data'].data[...] = img
+	with open(testFeaturesFileName, 'rb') as testFeaturesFile:
+		(filesTestNames, featureVectorsTest) = pickle.load(testFeaturesFile)
+		featureVectorsTest = np.array(featureVectorsTest)
+	
 
-		out = net.forward()
 
-		feat = net.blobs['fc25'].data[0]
+	#Define the classes present in our trainset
+	classes = sorted(list(set(labelsTrain)))
+	print 'Labels in the trainset : ', classes
 
-		print feat
+	
 
-	#vis_square(feat)
+
+	#Fit a SVM model on the extracted trainFeatures
+	t1 = time.time()
+	modelSVM = svm.SVC(kernel="linear", C=1e6, probability=True) # little regularization needed - get this training set right, neglect margin
+	modelSVM.fit(featureVectorsTrain, labelsTrain)
+	print 'SVM training took ',(time.time() - t1) ,' seconds'
+
+
+
+	#Test the SVM using the extracted testFeatures
+	t1 = time.time()
+	for index in range(len(filesTestNames)):
+		features =  np.array(featureVectorsTest[index]).reshape((1, -1))
+		prediction = modelSVM.predict(features)
+		print 'For image ', filesTestNames[index], ' ... Predicted: ', prediction, ' TrueLabel: ', labelsTest[index]
+
+
+	print 'SVM test took ',(time.time() - t1) ,' seconds'
+
 
 
 
