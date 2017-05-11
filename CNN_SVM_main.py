@@ -11,6 +11,8 @@ import os
 import pickle
 from sklearn import svm
 import time
+import random
+import xml.etree.ElementTree as ET
 
 from caffe.io import array_to_blobproto
 from collections import defaultdict
@@ -44,23 +46,50 @@ def vis_square(data):
 	#cv2.waitKey(0)
 
 
-def splitDataset(allNamesListFile, trainPercentage):
+def splitDataset(imgSetName, trainPercentage):
 
 
 	#Open allNamesListFile, and split the data into:
 
-	listImagesNamesTrain = "listImagesNamesTrain.txt"  
-	listImagesNamesTest = "listImagesNamesTest.txt"
+	imagesTrainSet = "ImagesTrainSet.txt"  
+	imagesTestSet = "ImagesTestSet.txt"
+	imgSet = []
+	trainSet = []
+	testSet = []
 
-	#trainFile = open(listImagesNamesTrain, "w")
-	#trainFile.write('something')
-	#trainFile.close()
+	numElements = 0
 
-	#testFile = open(listImagesNamesTest, "w")
-	#testFile.write('something')
-	#testFile.close()
+	with open(imgSetName, 'r') as file:
+		for sampleName in (file.read().splitlines()):
+			imgSet.append(sampleName)
+			numElements+=1
 
-	return [listImagesNamesTrain, listImagesNamesTest]
+	rangeImageIndices = range(numElements)
+	numberTrainSample = int(round(trainPercentage*numElements))   
+	trainIndices = random.sample(rangeImageIndices, numberTrainSample) 
+	countTrain = 0
+	countTest = 0
+
+	for i in range(numElements):
+		if i in trainIndices:
+			trainSet.append(imgSet[i])
+			countTrain += 1
+		else:
+			testSet.append(imgSet[i])
+			countTest += 1
+
+	trainFile = open(imagesTrainSet, "w")
+	trainFile.write("\n".join(trainSet))
+	trainFile.close()
+
+	testFile = open(imagesTestSet, "w")
+	testFile.write("\n".join(testSet))
+	testFile.close()
+	#print trainSet
+	#print len(trainSet)
+    
+
+	return [trainSet, testSet]
 
 
 
@@ -83,8 +112,8 @@ def createSamplesDatastructures(samplesListFileName):
 			samplesImages.append(image)
 
 			annotationCompletePath = annotationsFolderPath + sampleName + '.xml'
-			#label = readLabelFromAnnotation(annotationCompletePath)
-			#samplesLabels.append(label)
+			labels = readLabelFromAnnotation(annotationCompletePath)
+			samplesLabels.append(labels)
 
 
 	return [samplesNames, samplesImages, samplesLabels]
@@ -92,12 +121,17 @@ def createSamplesDatastructures(samplesListFileName):
 
 
 def readLabelFromAnnotation(annotationFileName):
+	#Parse the given annotation file and read the label
 
+	labels = []
+	tree = ET.parse(annotationFileName)
+	root = tree.getroot()
+	for obj in root.findall('object'):
+		name = obj.find('name').text
+		#print name
+		labels.append(name)
 
-	#Parse the given annotation file and read the label 
-
-
-	return label
+	return labels
 
 
 
@@ -140,7 +174,7 @@ def main(argv):
 
 	print 'model file is "', model_filename
 	print 'weight file is "', weight_filename
-	print 'image file is "', listImagesNames
+	#print 'image file is "', listImagesNames
 
 
 	caffe.set_mode_cpu()
@@ -149,103 +183,18 @@ def main(argv):
 	    print 'Caffe model found.'
 	else:
 	    print 'Caffe model NOT found...'
-	    sys.exit(2)
+	    #sys.exit(2)
 
 
-	listImagesNames = "listImagesNames.txt"
+	AllImagesSet = "ImagesSet.txt"
+	SampleImage = "ImageTestForAnnotation.txt"
 	trainDataPercentage = 0.7
 	
 	#Given file listImagesNames and percentage-> listImagesNamesTrain listImagesNamesTest
-	[listImagesNamesTrain, listImagesNamesTest] = splitDataset(listImagesNames, trainDataPercentage)
-
-
-	#Load all images in data structure -> imagesTrain imagesTest
-	[filesTrainNames, imagesTrain, labelsTrain] = createSamplesDatastructures(listImagesNamesTrain)
-	[filesTestNames, imagesTest, labelsTest] = createSamplesDatastructures(listImagesNamesTest)
-
-
-	labelsTrain = ['car','airplane','airplane']
-	labelsTest = ['car', 'airplane']
-
-
-	#CNN creation
-	net = caffe.Net(model_filename,      # defines the structure of the model
-	               weight_filename,  # contains the trained weights
-	              caffe.TEST)     # use test mode (e.g., don't perform dropout)
-
-
-	extractionLayerName = 'fc25'
-
-	transformer = caffe.io.Transformer({'data': net.blobs['data'].data.shape})
-	transformer.set_transpose('data', (2,0,1)) #move image channels to outermost dimension 
-
-
-
-	#Update the sets of images by transforming them according to Transformer
-	for  index in range(len(imagesTrain)):
-		imagesTrain[index] = transformer.preprocess('data', imagesTrain[index])
-
-	for  index in range(len(imagesTest)):
-		imagesTest[index] = transformer.preprocess('data', imagesTest[index])		
-
-
-	#Forward the net on all images -> featureVectorsTrain featureVectorsTest
-	featureVectorsTrain = []
-	featureVectorsTest = []
-	
-	t1 = time.time()
-	featureVectorsTrain = extractFeatures(imagesTrain, net, extractionLayerName)
-	featureVectorsTest = extractFeatures(imagesTest, net, extractionLayerName)
-	print 'Features extraction took ',(time.time() - t1) ,' seconds'
-
-	#Dump features in 2 files -> trainFeatures testFeatures
-	trainFeaturesFileName = 'trainFeatures.b'
-	testFeaturesFileName =  'testFeatures.b'
-	
-	with open(trainFeaturesFileName, 'wb') as trainFeaturesFile:
-		pickle.dump((filesTrainNames, featureVectorsTrain), trainFeaturesFile)
-
-	with open(testFeaturesFileName, 'wb') as testFeaturesFile:
-		pickle.dump((filesTestNames, featureVectorsTest), testFeaturesFile)	
-
-
-
-	#Load features from a previously dumped file
-	with open(trainFeaturesFileName, 'rb') as trainFeaturesFile:
-		(filesTrainNames, featureVectorsTrain) = pickle.load(trainFeaturesFile)
-		featureVectorsTrain = np.array(featureVectorsTrain)
-
-	with open(testFeaturesFileName, 'rb') as testFeaturesFile:
-		(filesTestNames, featureVectorsTest) = pickle.load(testFeaturesFile)
-		featureVectorsTest = np.array(featureVectorsTest)
-	
-
-
-	#Define the classes present in our trainset
-	classes = sorted(list(set(labelsTrain)))
-	print 'Labels in the trainset : ', classes
-
-	
-
-
-	#Fit a SVM model on the extracted trainFeatures
-	t1 = time.time()
-	modelSVM = svm.SVC(kernel="linear", C=1e6, probability=True) # little regularization needed - get this training set right, neglect margin
-	modelSVM.fit(featureVectorsTrain, labelsTrain)
-	print 'SVM training took ',(time.time() - t1) ,' seconds'
-
-
-
-	#Test the SVM using the extracted testFeatures
-	t1 = time.time()
-	for index in range(len(filesTestNames)):
-		features =  np.array(featureVectorsTest[index]).reshape((1, -1))
-		prediction = modelSVM.predict(features)
-		print 'For image ', filesTestNames[index], ' ... Predicted: ', prediction, ' TrueLabel: ', labelsTest[index]
-
-
-	print 'SVM test took ',(time.time() - t1) ,' seconds'
-
+	#[listImagesNamesTrain, listImagesNamesTest] = splitDataset(AllImagesSet, trainDataPercentage)
+	#print (listImagesNamesTrain)
+	[A,B,Labels] = createSamplesDatastructures(SampleImage)
+	print Labels
 
 
 
