@@ -93,7 +93,7 @@ def splitDataset(imgSetName, trainPercentage):
 
 
 
-def createSamplesDatastructures(samplesListFileName):
+def createSamplesDatastructures(samplesListFileName, interesting_labels):
 
 	imagesFolderPath = "VOC2007/JPEGImages/"
 	annotationsFolderPath = "VOC2007/Annotations/"
@@ -112,24 +112,33 @@ def createSamplesDatastructures(samplesListFileName):
 			samplesImages.append(image)
 
 			annotationCompletePath = annotationsFolderPath + sampleName + '.xml'
-			labels = readLabelFromAnnotation(annotationCompletePath)
+			labels = readLabelFromAnnotation(annotationCompletePath, interesting_labels)
+			print "the label of image %s is %s" % (sampleName, labels)
 			samplesLabels.append(labels)
-
 
 	return [samplesNames, samplesImages, samplesLabels]
 
 
 
-def readLabelFromAnnotation(annotationFileName):
+def readLabelFromAnnotation(annotationFileName, interesting_labels):
 	#Parse the given annotation file and read the label
 
+	all_labels = []
 	labels = []
 	tree = ET.parse(annotationFileName)
 	root = tree.getroot()
 	for obj in root.findall('object'):
 		name = obj.find('name').text
 		#print name
-		labels.append(name)
+		all_labels.append(name)
+
+	# returns all interesting labels found in an image
+	labels = [x for x in interesting_labels if x in all_labels]
+
+	# if there are more labels in an image pick one randomly
+	if len(labels) > 1:
+		#labels = random.choice(labels)
+		labels = labels[1]  
 
 	return labels
 
@@ -190,11 +199,15 @@ def main(argv):
 	SampleImage = "ImageTestForAnnotation.txt"
 	trainDataPercentage = 0.7
 	
+	interesting_labels = ['aeroplane','bird','cat','boat','horse']
+	# se per esempio qua aggiungi 'person' vedi che ti stampa anche quel label
+
 	#Given file listImagesNames and percentage-> listImagesNamesTrain listImagesNamesTest
 	#[listImagesNamesTrain, listImagesNamesTest] = splitDataset(AllImagesSet, trainDataPercentage)
 	#print (listImagesNamesTrain)
-	[A,B,Labels] = createSamplesDatastructures(SampleImage)
-	print Labels
+	[A,B,Labels] = createSamplesDatastructures(AllImagesSet, interesting_labels)
+	#print Labels
+	#print len(Labels)
 
 
 
