@@ -1,8 +1,6 @@
 # set up Python environment: numpy for numerical routines, and matplotlib for plotting
 import caffe
-# GPU_ID = 0 # Switch between 0 and 1 depending on the GPU you want to use.
-# caffe.set_mode_gpu()
-# caffe.set_device(GPU_ID)
+
 from datetime import datetime
 import numpy as np
 import matplotlib.pyplot as plt
@@ -107,29 +105,50 @@ def splitDataset(imgSetName, trainPercentage, partialMd5CheckSum):
 
 
 
-def createSamplesDatastructures(samplesListFileName, interesting_labels):
+def createSamplesDatastructures(samplesListFileName, interesting_labels, mode):
 
-	imagesFolderPath = "VOC2007/JPEGImages/"
-	annotationsFolderPath = "VOC2007/Annotations/"
 
 	samplesNames = []
 	samplesImages = []
 	samplesLabels = []
 
-	with open(samplesListFileName,'r') as fTrain:
-		for sampleName in (fTrain.read().splitlines()): 
-			
-			samplesNames.append(sampleName)
 
-			imageCompletePath = imagesFolderPath + sampleName + '.jpg'
-			image = caffe.io.load_image(imageCompletePath)
-			samplesImages.append(image)
+	if mode == 'voc':
 
-			annotationCompletePath = annotationsFolderPath + sampleName + '.xml'
-			label = readLabelFromAnnotation(annotationCompletePath, interesting_labels)
-			samplesLabels.append(label)
+		imagesFolderPath = "VOC2007/JPEGImages/"
+		annotationsFolderPath = "VOC2007/Annotations/"
 
-	return [samplesNames, samplesImages, samplesLabels]
+		with open(samplesListFileName,'r') as file:
+			for sampleName in (file.read().splitlines()): 
+				
+				samplesNames.append(sampleName)
+
+				imageCompletePath = imagesFolderPath + sampleName + '.jpg'
+				image = caffe.io.load_image(imageCompletePath)
+				samplesImages.append(image)
+
+				annotationCompletePath = annotationsFolderPath + sampleName + '.xml'
+				label = readLabelFromAnnotation(annotationCompletePath, interesting_labels)
+				samplesLabels.append(label)
+
+		return [samplesNames, samplesImages, samplesLabels]
+
+	elif mode == 'imagenet':
+
+		with open(samplesListFileName,'r') as file:
+			for samplePath in (file.read().splitlines()): 
+				
+				splittedName = sampleName.split('/')
+
+				samplesNames.append(splittedName[1])
+
+				image = caffe.io.load_image(samplePath)
+				samplesImages.append(image)
+
+				samplesLabels.append(splittedName[0])
+
+		return [samplesNames, samplesImages, samplesLabels]
+
 
 
 
@@ -171,15 +190,16 @@ def main(argv):
 	model_filename = ''
 	weight_filename = ''
 	img_filename = ''
+	mode = ' '
 	try:
-		opts, args = getopt.getopt(argv, "hm:w:i:")
+		opts, args = getopt.getopt(argv, "hm:w:i:s:")
 		print opts
 	except getopt.GetoptError:
-		print 'CNN_SVM_main.py -m <model_file> -w <output_file> -i <img_files_list>'
+		print 'CNN_SVM_main.py -m <model_file> -w <output_file> -i <img_files_list> -s <mode>'
 		sys.exit(2)
 	for opt, arg in opts:
 		if opt == '-h':
-			print 'CNN_SVM_main.py -m <model_file> -w <weight_file> -i <img_files_list>'
+			print 'CNN_SVM_main.py -m <model_file> -w <weight_file> -i <img_files_list> -s <mode>'
 			sys.exit()
 		elif opt == "-m":
 			model_filename = arg
@@ -187,10 +207,13 @@ def main(argv):
 			weight_filename = arg
 		elif opt == "-i":
 			listImagesNames = arg
+		elif opt == "-s":
+			mode = arg;
 
-	print 'model file is "', model_filename
-	print 'weight file is "', weight_filename
-	print 'image file is "', listImagesNames
+	print 'model file is ', model_filename
+	print 'weight file is ', weight_filename
+	print 'image file is ', listImagesNames
+	print 'mode is ', mode
 
 
 
@@ -203,6 +226,11 @@ def main(argv):
 	else:
 	    print 'Caffe model NOT found...'
 	    sys.exit(2)
+
+
+	if not mode == 'voc' and not mode == 'imagenet':
+		print 'The given mode is not supported...'
+		sys.exit(2)
 
 
 	caffe.set_mode_cpu()
@@ -228,8 +256,8 @@ def main(argv):
 
 
 	#Load all images in data structure -> imagesTrain imagesTest
-	[filesTrainNames, imagesTrain, labelsTrain] = createSamplesDatastructures(listImagesNamesTrain, interesting_labels)
-	[filesTestNames, imagesTest, labelsTest] = createSamplesDatastructures(listImagesNamesTest, interesting_labels)
+	[filesTrainNames, imagesTrain, labelsTrain] = createSamplesDatastructures(listImagesNamesTrain, interesting_labels, mode)
+	[filesTestNames, imagesTest, labelsTest] = createSamplesDatastructures(listImagesNamesTest, interesting_labels, mode)
 
 
 	trainFeaturesFileName = 'trainFeatures_' + partialMd5CheckSum + '.b'
@@ -307,8 +335,8 @@ def main(argv):
 	vis_square(filters.transpose(0, 2, 3, 1), filename='conv1.png')
 
 
-	#activatedFeatures = net.blobs['conv1'].data[0, :36]
-	#vis_square(activatedFeatures)
+	#activatedFeatures = net.blobs['conv1'].data #Not working on activation features....
+	#vis_square(activatedFeatures.transpose(0, 2, 3, 1))
 	
 
 if __name__=='__main__':	
