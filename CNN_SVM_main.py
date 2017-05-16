@@ -13,6 +13,7 @@ import time
 import random
 import xml.etree.ElementTree as ET
 import hashlib
+import glob
 
 from caffe.io import array_to_blobproto
 from collections import defaultdict
@@ -68,6 +69,16 @@ def splitDataset(imgSetName, trainPercentage, partialMd5CheckSum):
 	numElements = 0
 
 	if not os.path.isfile(imagesTrainSetName) or not os.path.isfile(imagesTestSetName):
+
+		oldTrainFile = glob.glob('ImagesTrainSet_*')
+		oldTestFile = glob.glob('ImagesTestSet_*')
+
+		if oldTrainFiles:
+			os.remove(oldTrainFile)
+
+		if oldTestFile:
+			os.remove(oldTestFile)
+
 
 		with open(imgSetName, 'r') as file:
 			for sampleName in (file.read().splitlines()):
@@ -138,7 +149,7 @@ def createSamplesDatastructures(samplesListFileName, interesting_labels, mode):
 		with open(samplesListFileName,'r') as file:
 			for samplePath in (file.read().splitlines()): 
 				
-				splittedName = sampleName.split('/')
+				splittedName = samplePath.split('/')
 
 				samplesNames.append(splittedName[1])
 
@@ -296,6 +307,15 @@ def main(argv):
 
 
 	else:
+
+		oldTrainFeaturesFile = glob.glob('trainFeatures_*')
+		oldTestFeaturesFile = glob.glob('testFeatures_*')
+
+		if oldTrainFeaturesFile:
+			os.remove(oldTrainFeaturesFile)
+
+		if oldTestFeaturesFile:
+			os.remove(oldTestFeaturesFile)
 
 		#Load features from a previously dumped file
 		with open(trainFeaturesFileName, 'rb') as trainFeaturesFile:

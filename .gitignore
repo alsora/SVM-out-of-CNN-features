@@ -1,7 +1,8 @@
 *~
 *.pyc
 
-VOC2007
+ImageNet/
+VOC2007/
 prototxt/
 weights/
 images/
