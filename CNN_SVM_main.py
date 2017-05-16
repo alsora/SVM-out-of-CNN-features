@@ -73,11 +73,11 @@ def splitDataset(imgSetName, trainPercentage, partialMd5CheckSum):
 		oldTrainFile = glob.glob('ImagesTrainSet_*')
 		oldTestFile = glob.glob('ImagesTestSet_*')
 
-		if oldTrainFiles:
-			os.remove(oldTrainFile)
+		for file in oldTrainFile:
+			os.remove(file)
 
-		if oldTestFile:
-			os.remove(oldTestFile)
+		for file in oldTestFile:
+			os.remove(file)
 
 
 		with open(imgSetName, 'r') as file:
@@ -151,12 +151,12 @@ def createSamplesDatastructures(samplesListFileName, interesting_labels, mode):
 				
 				splittedName = samplePath.split('/')
 
-				samplesNames.append(splittedName[1])
+				samplesNames.append(splittedName[2])
 
 				image = caffe.io.load_image(samplePath)
 				samplesImages.append(image)
 
-				samplesLabels.append(splittedName[0])
+				samplesLabels.append(splittedName[1])
 
 		return [samplesNames, samplesImages, samplesLabels]
 
@@ -206,7 +206,7 @@ def main(argv):
 		opts, args = getopt.getopt(argv, "hm:w:i:s:")
 		print opts
 	except getopt.GetoptError:
-		print 'CNN_SVM_main.py -m <model_file> -w <output_file> -i <img_files_list> -s <mode>'
+		print 'CNN_SVM_main.py -m <model_file> -w <weight_file> -i <img_files_list> -s <mode>'
 		sys.exit(2)
 	for opt, arg in opts:
 		if opt == '-h':
@@ -297,6 +297,16 @@ def main(argv):
 		featureVectorsTest = extractFeatures(imagesTest, net, extractionLayerName)
 		print 'Features extraction took ',(time.time() - t1) ,' seconds for ', (len(imagesTrain) + len(imagesTest)), ' images'
 
+		oldTrainFeaturesFile = glob.glob('trainFeatures_*')
+		oldTestFeaturesFile = glob.glob('testFeatures_*')
+
+		for file in oldTrainFeaturesFile:
+			os.remove(file)
+
+		for file in oldTestFeaturesFile:
+			os.remove(file)
+
+
 		#Dump features in 2 files -> trainFeatures testFeatures
 		with open(trainFeaturesFileName, 'wb') as trainFeaturesFile:
 			pickle.dump((filesTrainNames, featureVectorsTrain), trainFeaturesFile)
@@ -308,15 +318,6 @@ def main(argv):
 
 	else:
 
-		oldTrainFeaturesFile = glob.glob('trainFeatures_*')
-		oldTestFeaturesFile = glob.glob('testFeatures_*')
-
-		if oldTrainFeaturesFile:
-			os.remove(oldTrainFeaturesFile)
-
-		if oldTestFeaturesFile:
-			os.remove(oldTestFeaturesFile)
-
 		#Load features from a previously dumped file
 		with open(trainFeaturesFileName, 'rb') as trainFeaturesFile:
 			(filesTrainNames, featureVectorsTrain) = pickle.load(trainFeaturesFile)
@@ -326,18 +327,28 @@ def main(argv):
 			(filesTestNames, featureVectorsTest) = pickle.load(testFeaturesFile)
 			featureVectorsTest = np.array(featureVectorsTest)
 
+	
+	featureVectorsTrainNormalized = []
+	featureVectorsTestNormalized = []
 
 
+	for vec in featureVectorsTrain:
+		vecNormalized = vec/np.linalg.norm(vec)
+		featureVectorsTrainNormalized.append(vecNormalized)
+
+	for vec in featureVectorsTest:
+		vecNormalized = vec/np.linalg.norm(vec)
+		featureVectorsTrainNormalized.append(vecNormalized)		
 
 
 
 	#Fit a SVM model on the extracted trainFeatures
 	t1 = time.time()
-	modelSVM = svm.SVC(kernel="linear", C=1e6, probability=True) # little regularization needed - get this training set right, neglect margin
+	modelSVM = svm.SVC(kernel="rbf", C=1e6, probability=True) # little regularization needed - get this training set right, neglect margin
 	modelSVM.fit(featureVectorsTrain, labelsTrain)
 	print 'SVM training took ',(time.time() - t1) ,' seconds'
 
-
+	countCorrect = 0
 
 	#Test the SVM using the extracted testFeatures
 	t1 = time.time()
@@ -345,14 +356,16 @@ def main(argv):
 		features =  np.array(featureVectorsTest[index]).reshape((1, -1))
 		prediction = modelSVM.predict(features)
 		print 'For image ', filesTestNames[index], ' ... Predicted: ', prediction, ' TrueLabel: ', labelsTest[index]
-
+		if prediction == labelsTest[index]:
+			countCorrect+=1
 	print 'SVM test took ',(time.time() - t1) ,' seconds'
+	print 'Accuracy: ', countCorrect/len(labelsTest)
 
 
 
 
 	filters = net.params['conv1'][0].data
-	vis_square(filters.transpose(0, 2, 3, 1), filename='conv1.png')
+	vis_square(filters.transpose(0, 2, 3, 1))
 
 
 	#activatedFeatures = net.blobs['conv1'].data #Not working on activation features....
