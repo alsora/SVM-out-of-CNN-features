@@ -3,7 +3,7 @@ import sys, getopt
 import cv2
 import os
 import glob
-
+from PIL import Image
 
 
 def writeImages(num,classes):
@@ -20,9 +20,14 @@ def writeImages(num,classes):
 			fnames = os.listdir(path)
 
 			if num == 0:
-				for eachfile in fnames: myfile.write(path + '/' + eachfile + '\n')
+				for eachfile in fnames: 
+					img = Image.open(path + '/' + eachfile)
+					img.verify()
+					
+					myfile.write(path + '/' + eachfile + '\n')
 			else:
 				for n in range(0,num):
+
 					myfile.write(path + '/' + fnames[n] + '\n')
 
 
@@ -33,8 +38,6 @@ def writeImages(num,classes):
 
 def main(argv):
 
-
-	num = 0
 
 	if len(argv) == 1:
 		num = int(argv[0])

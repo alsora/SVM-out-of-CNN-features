@@ -318,6 +318,8 @@ def main(argv):
 
 	else:
 
+		print 'Opening old features.... '
+
 		#Load features from a previously dumped file
 		with open(trainFeaturesFileName, 'rb') as trainFeaturesFile:
 			(filesTrainNames, featureVectorsTrain) = pickle.load(trainFeaturesFile)
@@ -338,14 +340,31 @@ def main(argv):
 
 	for vec in featureVectorsTest:
 		vecNormalized = vec/np.linalg.norm(vec)
-		featureVectorsTrainNormalized.append(vecNormalized)		
+		featureVectorsTestNormalized.append(vecNormalized)	
+
+	#featureVectorsTrainNormalized = np.array(featureVectorsTrainNormalized)	
+	#featureVectorsTestNormalized = np.array(featureVectorsTestNormalized)	
+
+	trainMean = np.mean(featureVectorsTrainNormalized, axis = 0)
+	testMean = np.mean(featureVectorsTestNormalized, axis = 0)	
+
+	featureVectorsTrainNormalizedCentered = []
+	featureVectorsTestNormalizedCentered = []
+
+	for vec in featureVectorsTrainNormalized:
+		vecCentered = vec - trainMean
+		featureVectorsTrainNormalizedCentered.append(vecCentered)
+
+	for vec in featureVectorsTestNormalized:
+		vecCentered = vec - testMean
+		featureVectorsTestNormalizedCentered.append(vecCentered)
 
 
 
 	#Fit a SVM model on the extracted trainFeatures
 	t1 = time.time()
 	modelSVM = svm.SVC(kernel="rbf", C=1e6, probability=True) # little regularization needed - get this training set right, neglect margin
-	modelSVM.fit(featureVectorsTrain, labelsTrain)
+	modelSVM.fit(featureVectorsTrainNormalizedCentered, labelsTrain)
 	print 'SVM training took ',(time.time() - t1) ,' seconds'
 
 	countCorrect = 0
@@ -353,13 +372,13 @@ def main(argv):
 	#Test the SVM using the extracted testFeatures
 	t1 = time.time()
 	for index in range(len(filesTestNames)):
-		features =  np.array(featureVectorsTest[index]).reshape((1, -1))
+		features =  np.array(featureVectorsTestNormalizedCentered[index]).reshape((1, -1))
 		prediction = modelSVM.predict(features)
 		print 'For image ', filesTestNames[index], ' ... Predicted: ', prediction, ' TrueLabel: ', labelsTest[index]
 		if prediction == labelsTest[index]:
 			countCorrect+=1
 	print 'SVM test took ',(time.time() - t1) ,' seconds'
-	print 'Accuracy: ', countCorrect/len(labelsTest)
+	print 'Accuracy: ', float(countCorrect)/len(labelsTest)
 
 
 
