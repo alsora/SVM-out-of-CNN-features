@@ -1,6 +1,10 @@
 *~
 *.pyc
-
+*.png
+*.b
+*.txt
+!samples_namesNET.txt
+!samples_namesVOC.txt
 ImageNet/
 VOC2007/
 prototxt/
