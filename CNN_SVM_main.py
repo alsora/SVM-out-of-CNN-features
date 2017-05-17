@@ -273,6 +273,8 @@ def main(argv):
         sys.exit(2)
 
 
+
+
     caffe.set_mode_cpu()
 
     #CNN creation
@@ -309,6 +311,10 @@ def main(argv):
 
         transformer = caffe.io.Transformer({'data': net.blobs['data'].data.shape})
         transformer.set_transpose('data', (2,0,1)) #move image channels to outermost dimension 
+
+        if mode == 'imagenet':
+        	imagenetMeanPath = caffe.__path__[0] + '/imagenet/ilsvrc_2012_mean.npy'
+        	transformer.set_mean('data',np.load(imagenetMeanPath).mean(1).mean(1))
 
         #Update the sets of images by transforming them according to Transformer
         for  index in range(len(imagesTrain)):
