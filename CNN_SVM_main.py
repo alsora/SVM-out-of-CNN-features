@@ -135,15 +135,20 @@ def createSamplesDatastructures(samplesListFileName, interesting_labels, mode):
         with open(samplesListFileName,'r') as file:
             for sampleName in (file.read().splitlines()): 
 
-                samplesNames.append(sampleName)
-
-                imageCompletePath = imagesFolderPath + sampleName + '.jpg'
-                image = caffe.io.load_image(imageCompletePath)
-                samplesImages.append(image)
 
                 annotationCompletePath = annotationsFolderPath + sampleName + '.xml'
                 label = readLabelFromAnnotation(annotationCompletePath, interesting_labels)
-                samplesLabels.append(label)
+                if label is not 'label_error':
+                    
+                    samplesLabels.append(label)
+                    
+                    samplesNames.append(sampleName)
+
+                    imageCompletePath = imagesFolderPath + sampleName + '.jpg'
+                    image = caffe.io.load_image(imageCompletePath)
+                    samplesImages.append(image)
+
+
 
         return [samplesNames, samplesImages, samplesLabels]
 
@@ -169,14 +174,21 @@ def createSamplesDatastructures(samplesListFileName, interesting_labels, mode):
 def readLabelFromAnnotation(annotationFileName, interesting_labels):
     #Parse the given annotation file and read the label
 
+    classes = []
+
     tree = ET.parse(annotationFileName)
     root = tree.getroot()
     for obj in root.findall('object'):
         name = obj.find('name').text
 
         if (name in interesting_labels):
-            return name
+            classes.append(name)
 
+
+    if len(classes) is 1:
+        return classes[0]
+    else:
+        return 'label_error'
 
 
 def extractFeatures(imageSet, net, extractionLayerName):
@@ -285,7 +297,7 @@ def main(argv):
 
     extractionLayerName = 'fc25'
     if extractionLayerName not in net.blobs:
-        raise TypeError("Invalid layer name: " + extractionLayerName)
+        raise TypeError("Network " +model_filename + " does not contain layer with name: " + extractionLayerName)
 
 
 
@@ -308,13 +320,22 @@ def main(argv):
 
     if not os.path.isfile(trainFeaturesFileName) or not os.path.isfile(testFeaturesFileName):
 
+    	#YOLO CNN uses images in range [0,1], while other models (VGG, faster RCNN ...) use images in range [0,255]
+    	if 'yolo' not in model_filename:
+    		imagesScale = 1.0;
+    	else:
+    		imagesScale = 255.0
 
         transformer = caffe.io.Transformer({'data': net.blobs['data'].data.shape})
         transformer.set_transpose('data', (2,0,1)) #move image channels to outermost dimension 
+        transformer.set_raw_scale('data', imagesScale) 
 
-        if mode == 'imagenet':
+        if mode is 'imagenet' and 'yolo' not in model_filename:
         	imagenetMeanPath = caffe.__path__[0] + '/imagenet/ilsvrc_2012_mean.npy'
-        	transformer.set_mean('data',np.load(imagenetMeanPath).mean(1).mean(1))
+        	imagenetMean = np.load(imagenetMeanPath)
+        	imagenetMean = imagenetMean/(255.0/imagesScale)
+        	transformer.set_mean('data',imagenetMean.mean(1).mean(1))
+
 
         #Update the sets of images by transforming them according to Transformer
         for  index in range(len(imagesTrain)):
@@ -366,6 +387,8 @@ def main(argv):
             featureVectorsTest = np.array(featureVectorsTest)
 
 
+
+
     featureVectorsTrainNormalized = []
     featureVectorsTestNormalized = []
 
@@ -377,9 +400,6 @@ def main(argv):
     for vec in featureVectorsTest:
         vecNormalized = vec/np.linalg.norm(vec)
         featureVectorsTestNormalized.append(vecNormalized)	
-
-    #featureVectorsTrainNormalized = np.array(featureVectorsTrainNormalized)	
-    #featureVectorsTestNormalized = np.array(featureVectorsTestNormalized)	
 
     trainMean = np.mean(featureVectorsTrainNormalized, axis = 0)
     testMean = np.mean(featureVectorsTestNormalized, axis = 0)	
