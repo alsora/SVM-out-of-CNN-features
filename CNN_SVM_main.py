@@ -284,9 +284,6 @@ def main(argv):
         print 'The given mode is not supported...'
         sys.exit(2)
 
-
-
-
     caffe.set_mode_cpu()
 
     #CNN creation
@@ -370,7 +367,6 @@ def main(argv):
 
         with open(testFeaturesFileName, 'wb') as testFeaturesFile:
             pickle.dump((filesTestNames, featureVectorsTest), testFeaturesFile)	
-
 
 
     else:
