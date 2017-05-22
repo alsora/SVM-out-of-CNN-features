@@ -87,7 +87,7 @@ def splitDataset(imgSetName, trainPercentage, partialMd5CheckSum):
             for sampleName in (file.read().splitlines()):
                 imgSet.append(sampleName)
                 numElements+=1
-
+                
         rangeImageIndices = range(numElements)
         numberTrainSample = int(round(trainPercentage*numElements))   
         trainIndices = random.sample(rangeImageIndices, numberTrainSample) 
