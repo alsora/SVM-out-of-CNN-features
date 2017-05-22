@@ -30,7 +30,6 @@ def splitTrainTest(annotations_dir, interesting_labels, percentage):
                         images.append(name)
                         break
     numElements = len(images)
-    print numElements
     rangeImageIndices = range(numElements)
     numberTrainSample = int(round(percentage*numElements))   
     trainIndices = random.sample(rangeImageIndices, numberTrainSample) 

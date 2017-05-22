@@ -144,12 +144,22 @@ def test(net, networkName, noveltySVM, multiclassSVM, testList, images_dir_in, a
 
     extractBBoxesImages(testList,images_dir_in,annotations_dir_in, images_dir_out, annotations_dir_out, [])
 
-    [filesTestNames, imagesTest, labelsTest] = createSamplesDatastructures(images_dir, annotations_dir, interesting_labels, 'voc')
+    [filesTestNames, imagesTest, labelsTest] = createSamplesDatastructures(images_dir_out, annotations_dir_out, interesting_labels, 'voc')
 
     testFeaturesFileName = 'testFeatures' + networkName + '.b'
 
     if not os.path.isfile(testFeaturesFileName):
+        imagesScale = 255.0
 
+        transformer = caffe.io.Transformer({'data': net.blobs['data'].data.shape})
+        transformer.set_transpose('data', (2,0,1)) #move image channels to outermost dimension 
+        transformer.set_raw_scale('data', imagesScale) 
+
+        #Update the sets of images by transforming them according to Transformer
+        for  index in range(len(imagesTest)):
+            imagesTest[index] = transformer.preprocess('data', imagesTest[index])
+
+        
         extractionLayerName = netLayers[networkName]
         t1 = time.time()
         featureVectorsTest = extractFeatures(imagesTest, net, extractionLayerName)
@@ -172,18 +182,18 @@ def test(net, networkName, noveltySVM, multiclassSVM, testList, images_dir_in, a
     correctClass = 0
     numPredicted = 0
 
-    for index in len(featuresVector):
+    for idx, featuresVec in enumerate(featureVectorsTest):
 
-        isInlier = noveltySVM.predict(featuresVector[index])
+        isInlier = noveltySVM.predict(featuresVec)
         #predict should return +1 or -1
-        if isInlier is -1 and labelsTest[index] is 'unknown':
+        if isInlier is -1 and labelsTest[idx] is 'unknown':
              correctOutlier+=1
-
+        print isInlier
         if isInlier is 1:
             numPredicted+=1
-            prediction = multiclassSVM.predict(featuresVector[index])
+            prediction = multiclassSVM.predict(featuresVec)
 
-            if prediction is labelsTest[index]:
+            if prediction is labelsTest[idx]:
                 correctClass+=1
 
 
@@ -215,14 +225,14 @@ def readLabelFromAnnotation(annotationFileName, interesting_labels):
 def extractFeatures(imageSet, net, extractionLayerName):
 
     featuresVector = []
-
-    for image in imageSet:
+    totalImages = len(imageSet)
+    for num, image in enumerate(imageSet):
         #net.blobs['data'].reshape(1,3,227,227)
         net.blobs['data'].data[...] = image
         net.forward()
         features = net.blobs[extractionLayerName].data[0]
         featuresVector.append(features.copy().flatten())
-
+        print '\r {} of {}'.format(num, totalImages)
     return featuresVector
 
 
@@ -263,10 +273,11 @@ def main(argv):
 
     model_filename = ''
     weight_filename = ''
-    images_dir = ''
-    annotations_dir = ''
+    images_dir = 'VOC2007/JPEGImages'
+    annotations_dir = 'VOC2007/Annotations'
+    caffe.set_mode_cpu()
     try:
-        opts, args = getopt.getopt(argv, "hm:w:i:a:n:")
+        opts, args = getopt.getopt(argv, "hm:w:i:a:n:g")
         print opts
     except getopt.GetoptError:
         print 'CNN_SVM_main.py -m <model_file> -w <weight_file> -i <images_dir> -a <annotations_dir> -n <cnn_type>'
@@ -285,6 +296,11 @@ def main(argv):
             annotations_dir = arg
         elif opt == "-n":
         	cnn_type = arg
+        elif opt == "-g":
+			caffe.set_mode_gpu()
+			caffe.set_device(0)
+            #print "GPU POWER!!!"
+
 
 
     print 'model file is ', model_filename
@@ -305,19 +321,11 @@ def main(argv):
         sys.exit(2)
 
 
-    if args.cpu_mode:
-        caffe.set_mode_cpu()
-    else:
-        caffe.set_mode_gpu()
-        caffe.set_device(0)
-
     #CNN creation
     net = caffe.Net(model_filename,      # defines the structure of the model
                    weight_filename,  # contains the trained weights
                   caffe.TEST)     # use test mode (e.g., don't perform dropout)
 
-    images_dir = 'VOC2007/JPEGImages'
-    annotations_dir = 'VOC2007/Annotations'
 
     train_images = 'train_images'
     train_annotations = 'train_annotations'
