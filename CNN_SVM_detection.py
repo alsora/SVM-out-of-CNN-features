@@ -18,6 +18,8 @@ import hashlib
 import glob
 from sklearn.metrics import confusion_matrix
 
+from divide_et_impera import extractBBoxesImages
+
 from caffe.io import array_to_blobproto
 from collections import defaultdict
 from skimage import io
@@ -63,7 +65,9 @@ def createSamplesDatastructures(images_dir, annotations_dir, mode):
 
 
 
-def trainSVMsFromCroppedImages(net, extractionLayerName, images_dir, annotations_dir):
+def trainSVMsFromCroppedImages(net, extractionLayerName, images_dir, annotations_dir,interesting_labels):
+
+    extractBBoxesImages("VOC2007/Annotations", annotations_dir, "VOC2007/JPEGImages", images_dir, interesting_labels)
 
     [filesTrainNames, imagesTrain, labelsTrain] = createSamplesDatastructures(images_dir, annotations_dir, 'voc')
 
@@ -71,13 +75,6 @@ def trainSVMsFromCroppedImages(net, extractionLayerName, images_dir, annotations
 
     if not os.path.isfile(trainFeaturesFileName):
 
-        #YOLO CNN uses images in range [0,1], while other models (VGG, faster RCNN ...) use images in range [0,255]
-        '''if 'yolo' not in model_filename:
-            imagesScale = 1.0;
-        else:
-            imagesScale = 255.0
-
-'''
         imagesScale = 255.0
 
         transformer = caffe.io.Transformer({'data': net.blobs['data'].data.shape})
@@ -137,6 +134,29 @@ def trainSVMsFromCroppedImages(net, extractionLayerName, images_dir, annotations
 
 
 
+def testImages():
+
+    #create test set with annotated images
+    #for each image crop it according to ALL the bounding boxes in the annotation (using divide_et_impera)
+    #you will get a lot of cropped images, some belonging to interesting classes and some not.
+
+    #load cropped images
+    #assign a label to each image. If the image is not referring to an interesting label assign unknown
+    #for each cropped image just created 
+    featuresVector = extractFeatures(croppedImageSet, net, extractionLayerName)
+    for index in len(featuresVector):
+
+        isInlier = noveltySVM.predict(featuresVector[index])
+        #predict should return +1 or -1
+
+        if isInlier:
+            prediction = multiclassSVM.predict(featuresVector[index])
+
+    #accuracy precision recall
+    #we need a score for each svm. noveltySVM check if -1 corresponds to unknown
+    #multiclassSVM check if class correspond to label        
+
+
 
 
 
@@ -156,6 +176,7 @@ def extractFeatures(imageSet, net, extractionLayerName):
     featuresVector = []
 
     for image in imageSet:
+        net.blobs['data'].reshape(1,3,227,227)
         net.blobs['data'].data[...] = image
         net.forward()
         features = net.blobs[extractionLayerName].data[0]
@@ -252,7 +273,7 @@ def main(argv):
         raise TypeError("Network " +model_filename + " does not contain layer with name: " + extractionLayerName)
 
 
-    [noveltySVM, multiclassSVM] = trainSVMsFromCroppedImages(net, extractionLayerName, images_dir, annotations_dir)
+    [noveltySVM, multiclassSVM] = trainSVMsFromCroppedImages(net, extractionLayerName, images_dir, annotations_dir,interesting_labels)
    
 
 

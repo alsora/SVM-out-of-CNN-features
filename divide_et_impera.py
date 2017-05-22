@@ -6,10 +6,9 @@ import sys
 import cv2
 from collections import OrderedDict
 
-INTERESTING_LABELS = ['aeroplane', 'bird', 'cat', 'boat', 'horse']
 
-def getBBs(annotations_dict):
-    for root, dirs, files in walk(ANNOTATIONS_DIR_IN):
+def getBBs(annotations_dir_in, annotations_dict, interesting_labels):
+    for root, dirs, files in walk(annotations_dir_in):
         for file in files:
             name, extension = file.split(".")
             if extension == "xml":
@@ -20,7 +19,7 @@ def getBBs(annotations_dict):
                 obj_number = 0
                 for object in root_xml.findall("object"):
                     label = object.find("name").text
-                    if label in INTERESTING_LABELS:
+                    if label in interesting_labels or not interesting_labels:
                         bndbox = object.find("bndbox")
                         annotations_dict[name+"_"+str(obj_number)] = {}
                         annotations_dict[name+"_"+str(obj_number)]["xmin"] = bndbox.find("xmin").text
@@ -32,14 +31,14 @@ def getBBs(annotations_dict):
     return
 
 
-def dumpDictToXMLs(annotations_dict):
+def dumpDictToXMLs(images_dir_out, annotations_dir_out, annotations_dict):
 
     for filename, features in annotations_dict.iteritems():
 
         #image_name = filename.split(".")[0]
         root = ET.Element("annotation")
 
-        ET.SubElement(root, "folder").text = IMAGES_DIR_OUT
+        ET.SubElement(root, "folder").text = images_dir_out
         ET.SubElement(root, "filename").text = filename
 
         obj = ET.SubElement(root, "object")
@@ -51,14 +50,14 @@ def dumpDictToXMLs(annotations_dict):
         ET.SubElement(bndbox, "ymax").text = features["ymax"]
 
         tree = ET.ElementTree(root)
-        tree.write(join(ANNOTATIONS_DIR_OUT, filename)+".xml")
+        tree.write(join(annotations_dir_out, filename)+".xml")
 
     return
 
 
 
-def cropImages(annotations_dict):
-    for root, dirs, files in walk(IMAGES_DIR_IN):
+def cropImages(images_dir_in, images_dir_out, annotations_dict):
+    for root, dirs, files in walk(images_dir_in):
         for image_name in files:
             name, extension = image_name.split(".")
             if extension == "jpg":
@@ -75,55 +74,36 @@ def cropImages(annotations_dict):
                         cropped_image = image[ymin:ymax, xmin:xmax]
                         #cv2.imshow("cropped", cropped_image)
                         #cv2.waitKey(0)
-                        out_path = join(IMAGES_DIR_OUT, key+".jpg")
+                        out_path = join(images_dir_out, key+".jpg")
                         cv2.imwrite(out_path, cropped_image)
 
     return
 
-if __name__ == "__main__":
 
-    parser = argparse.ArgumentParser()
-    parser.add_argument("annotations_dir_in", type=str,
-                        help="the annotation directory input")
-    parser.add_argument("annotations_dir_out", type=str,
-                        help="the annotation directory output")
-    parser.add_argument("images_dir_in", type=str,
-                        help="the database of images")
-    parser.add_argument("images_dir_out", type=str,
-                        help="the output directory for the cropped images")
-    args = parser.parse_args()
-
-    if args.annotations_dir_in:
-        ANNOTATIONS_DIR_IN = args.annotations_dir_in
-    if args.annotations_dir_out:
-        ANNOTATIONS_DIR_OUT = args.annotations_dir_out
-    if args.images_dir_in:
-        IMAGES_DIR_IN = args.images_dir_in
-    if args.images_dir_out:
-        IMAGES_DIR_OUT = args.images_dir_out
+def extractBBoxesImages(annotations_dir_in,annotations_dir_out,images_dir_in,images_dir_out, interesting_labels ):
 
 
-    if not isdir(ANNOTATIONS_DIR_IN) or not isdir(IMAGES_DIR_IN):
+    if not isdir(annotations_dir_in) or not isdir(images_dir_in):
         print "The input directories are not valid"
         sys.exit(2)
-    if not isdir(ANNOTATIONS_DIR_OUT):
+    if not isdir(annotations_dir_out):
         try:
-            mkdir(ANNOTATIONS_DIR_OUT)
+            mkdir(annotations_dir_out)
         except OSError as e:
             print e
             sys.exit(2)
-    if not isdir(IMAGES_DIR_OUT):
+    if not isdir(images_dir_out):
         try:
-            mkdir(IMAGES_DIR_OUT)
+            mkdir(images_dir_out)
         except OSError as e:
             print e
             sys.exit(2)
 
     annotations_dict = {}
 
-    getBBs(annotations_dict)
-    dumpDictToXMLs(annotations_dict)
-    cropImages(annotations_dict)
+    getBBs(annotations_dir_in, annotations_dict,interesting_labels)
+    dumpDictToXMLs(images_dir_out, annotations_dir_out, annotations_dict)
+    cropImages(images_dir_in, images_dir_out, annotations_dict)
 
 
 
