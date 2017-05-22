@@ -228,11 +228,11 @@ def main(argv):
         opts, args = getopt.getopt(argv, "hm:w:i:a:")
         print opts
     except getopt.GetoptError:
-        print 'CNN_SVM_main.py -m <model_file> -w <weight_file> -i <images_dir> -a <annotations_dir>'
+        print 'CNN_SVM_main.py -m <model_file> -w <weight_file> -i <images_dir> -a <annotations_dir> -n <cnn_type>'
         sys.exit(2)
     for opt, arg in opts:
         if opt == '-h':
-            print 'CNN_SVM_main.py -m <model_file> -w <weight_file> -i <images_dir> -s <annotations_dir>'
+            print 'CNN_SVM_main.py -m <model_file> -w <weight_file> -i <images_dir> -a <annotations_dir> -n <cnn_type>'
             sys.exit()
         elif opt == "-m":
             model_filename = arg
@@ -241,16 +241,23 @@ def main(argv):
         elif opt == "-i":
             images_dir = arg
         elif opt == "-a":
-            annotations_dir = arg;
-
+            annotations_dir = arg
+		elif opt == "-n":
+	    	cnn_type = arg;
     print 'model file is ', model_filename
     print 'weight file is ', weight_filename
     print 'images dir is ', images_dir
     print 'annotations dir is ', annotations_dir
-
+    print 'the cnn is ', cnn_type	
 
 
     interesting_labels = ['aeroplane','bird','cat','boat','horse']
+    if cnn_type == 'googlenet':
+		extractionLayerName = 'pool5/7x7_s1'
+	elif cnn_type =='vggnet':
+		extractionLayerName = 'fc8'
+	elif cnn_type == 'resnet':
+		extracionLayerName = 'fc1000'
 
 
     if os.path.isfile(model_filename):
@@ -266,11 +273,10 @@ def main(argv):
     net = caffe.Net(model_filename,      # defines the structure of the model
                    weight_filename,  # contains the trained weights
                   caffe.TEST)     # use test mode (e.g., don't perform dropout)
-    #os.environ['GLOG_minloglevel'] = '0' 
 
-    extractionLayerName = 'fc25'
     if extractionLayerName not in net.blobs:
         raise TypeError("Network " +model_filename + " does not contain layer with name: " + extractionLayerName)
+		sys.exit(2)
 
 
     [noveltySVM, multiclassSVM] = trainSVMsFromCroppedImages(net, extractionLayerName, images_dir, annotations_dir,interesting_labels)
