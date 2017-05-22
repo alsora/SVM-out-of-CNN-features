@@ -18,7 +18,7 @@ import hashlib
 import glob
 from sklearn.metrics import confusion_matrix
 
-from divide_et_impera import extractBBoxesImages
+from divide_et_impera import extractBBoxesImages, splitTrainTest
 
 from caffe.io import array_to_blobproto
 from collections import defaultdict
@@ -76,7 +76,7 @@ def trainSVMsFromCroppedImages(net, networkName, trainList, images_dir_in, annot
 
     extractBBoxesImages(trainList,images_dir_in,annotations_dir_in, images_dir_out, annotations_dir_out, interesting_labels)
 
-    [filesTrainNames, imagesTrain, labelsTrain] = createSamplesDatastructures(images_dir, annotations_dir, interesting_labels, 'voc')
+    [filesTrainNames, imagesTrain, labelsTrain] = createSamplesDatastructures(images_dir_out, annotations_dir_out, interesting_labels, 'voc')
 
     trainFeaturesFileName = 'trainFeatures' + networkName + '.b'
 
@@ -283,8 +283,10 @@ def main(argv):
             images_dir = arg
         elif opt == "-a":
             annotations_dir = arg
-		elif opt == "-n":
-	    	cnn_type = arg;
+        elif opt == "-n":
+        	cnn_type = arg
+
+
     print 'model file is ', model_filename
     print 'weight file is ', weight_filename
     print 'images dir is ', images_dir
@@ -303,7 +305,11 @@ def main(argv):
         sys.exit(2)
 
 
-    caffe.set_mode_cpu()
+    if args.cpu_mode:
+        caffe.set_mode_cpu()
+    else:
+        caffe.set_mode_gpu()
+        caffe.set_device(0)
 
     #CNN creation
     net = caffe.Net(model_filename,      # defines the structure of the model
@@ -319,11 +325,13 @@ def main(argv):
     test_images = 'test_images'
     test_annotations = 'test_annotations'
 
+    percentage = 0.7
+
     [trainList, testList] = splitTrainTest(annotations_dir, interesting_labels, percentage)
 
-    [noveltySVM, multiclassSVM] = trainSVMsFromCroppedImages(net, cnn_type, trainList, images_dir, train_images, annotations_dir, train_annotations,interesting_labels)
+    [noveltySVM, multiclassSVM] = trainSVMsFromCroppedImages(net, cnn_type, trainList, images_dir,annotations_dir,  train_images, train_annotations,interesting_labels)
     
-    test(net, cnn_type, noveltySVM, multiclassSVM, testList,images_dir, test_images,annotations_dir,  test_annotations,interesting_labels):
+    test(net, cnn_type, noveltySVM, multiclassSVM, testList,images_dir,annotations_dir, test_images,  test_annotations,interesting_labels)
 
 
 
