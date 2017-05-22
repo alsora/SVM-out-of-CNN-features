@@ -27,12 +27,18 @@ from skimage import io
 from compute_mean import compute_mean 
 
 
+netLayers = {
+    'googlenet':'pool5/7x7_s1',
+    'vggnet':'fc8',
+    'resnet':'fc1000'
+
+}
 
 
 
 
 
-def createSamplesDatastructures(images_dir, annotations_dir, mode):
+def createSamplesDatastructures(images_dir, annotations_dir, interesting_labels, mode):
 
 
     samplesNames = []
@@ -53,7 +59,7 @@ def createSamplesDatastructures(images_dir, annotations_dir, mode):
                 samplesImages.append(image)
 
                 annotationCompletePath = annotations_dir + '/' + name + '.xml'
-                label = readLabelFromAnnotation(annotationCompletePath)
+                label = readLabelFromAnnotation(annotationCompletePath, interesting_labels)
                 samplesLabels.append(label)
 
         imagesFolderPath = images_dir
@@ -65,13 +71,14 @@ def createSamplesDatastructures(images_dir, annotations_dir, mode):
 
 
 
-def trainSVMsFromCroppedImages(net, extractionLayerName, images_dir, annotations_dir,interesting_labels):
 
-    extractBBoxesImages("VOC2007/Annotations", annotations_dir, "VOC2007/JPEGImages", images_dir, interesting_labels)
+def trainSVMsFromCroppedImages(net, networkName, trainList, images_dir_in, annotations_dir_in, images_dir_out, annotations_dir_out,interesting_labels):
 
-    [filesTrainNames, imagesTrain, labelsTrain] = createSamplesDatastructures(images_dir, annotations_dir, 'voc')
+    extractBBoxesImages(trainList,images_dir_in,annotations_dir_in, images_dir_out, annotations_dir_out, interesting_labels)
 
-    trainFeaturesFileName = 'trainFeatures.b'
+    [filesTrainNames, imagesTrain, labelsTrain] = createSamplesDatastructures(images_dir, annotations_dir, interesting_labels, 'voc')
+
+    trainFeaturesFileName = 'trainFeatures' + networkName + '.b'
 
     if not os.path.isfile(trainFeaturesFileName):
 
@@ -85,8 +92,7 @@ def trainSVMsFromCroppedImages(net, extractionLayerName, images_dir, annotations
         for  index in range(len(imagesTrain)):
             imagesTrain[index] = transformer.preprocess('data', imagesTrain[index])
 
-        featureVectorsTrain = []
-
+        extractionLayerName = netLayers[networkName]
         t1 = time.time()
         featureVectorsTrain = extractFeatures(imagesTrain, net, extractionLayerName)
         print 'Features extraction took ',(time.time() - t1) ,' seconds for ', len(imagesTrain), ' images'
@@ -134,41 +140,76 @@ def trainSVMsFromCroppedImages(net, extractionLayerName, images_dir, annotations
 
 
 
-def testImages():
+def test(net, networkName, noveltySVM, multiclassSVM, testList, images_dir_in, annotations_dir_in, images_dir_out, annotations_dir_out,interesting_labels):
 
-    #create test set with annotated images
-    #for each image crop it according to ALL the bounding boxes in the annotation (using divide_et_impera)
-    #you will get a lot of cropped images, some belonging to interesting classes and some not.
+    extractBBoxesImages(testList,images_dir_in,annotations_dir_in, images_dir_out, annotations_dir_out, [])
 
-    #load cropped images
-    #assign a label to each image. If the image is not referring to an interesting label assign unknown
-    #for each cropped image just created 
-    featuresVector = extractFeatures(croppedImageSet, net, extractionLayerName)
+    [filesTestNames, imagesTest, labelsTest] = createSamplesDatastructures(images_dir, annotations_dir, interesting_labels, 'voc')
+
+    testFeaturesFileName = 'testFeatures' + networkName + '.b'
+
+    if not os.path.isfile(testFeaturesFileName):
+
+        extractionLayerName = netLayers[networkName]
+        t1 = time.time()
+        featureVectorsTest = extractFeatures(imagesTest, net, extractionLayerName)
+        print 'Features extraction took ',(time.time() - t1) ,' seconds for ', len(imagesTest), ' images'
+
+        #Dump features in a file 
+        with open(testFeaturesFileName, 'wb') as testFeaturesFile:
+            pickle.dump((filesTestNames, featureVectorsTest), testFeaturesFile)
+
+    else:
+
+        print 'Opening old features.... '
+        #Load features from a previously dumped file
+        with open(testFeaturesFileName, 'rb') as testFeaturesFile:
+            (filesTestNames, featureVectorsTest) = pickle.load(testFeaturesFile)
+            featureVectorsTest = np.array(featureVectorsTest)
+
+    
+    correctOutlier = 0
+    correctClass = 0
+    numPredicted = 0
+
     for index in len(featuresVector):
 
         isInlier = noveltySVM.predict(featuresVector[index])
         #predict should return +1 or -1
+        if isInlier is -1 and labelsTest[index] is 'unknown':
+             correctOutlier+=1
 
-        if isInlier:
+        if isInlier is 1:
+            numPredicted+=1
             prediction = multiclassSVM.predict(featuresVector[index])
 
-    #accuracy precision recall
-    #we need a score for each svm. noveltySVM check if -1 corresponds to unknown
-    #multiclassSVM check if class correspond to label        
+            if prediction is labelsTest[index]:
+                correctClass+=1
+
+
+    numInterestingSamples = sum(i is not 'unknown' for i in labelsTest)
+    numSamples = len(labelsTest)
+    accuracy = 100*correctClass/numPredicted
+    recall = 100*correctClass/numInterestingSamples
+    precision = 100*(correctClass + correctOutlier)/numSamples
+
+    print 'Accuracy: ', accuracy, ' Precision: ', precision, ' Recall: ', recall
 
 
 
 
 
-def readLabelFromAnnotation(annotationFileName):
+def readLabelFromAnnotation(annotationFileName, interesting_labels):
     #Parse the given annotation file and read the label
 
     tree = ET.parse(annotationFileName)
     root = tree.getroot()
     for obj in root.findall('object'):
-        name = obj.find('name').text
-
-        return name
+        label = obj.find("name").text
+        if label in interesting_labels:
+            return label
+        else:
+            return 'unknwon'
 
 
 def extractFeatures(imageSet, net, extractionLayerName):
@@ -176,7 +217,7 @@ def extractFeatures(imageSet, net, extractionLayerName):
     featuresVector = []
 
     for image in imageSet:
-        net.blobs['data'].reshape(1,3,227,227)
+        #net.blobs['data'].reshape(1,3,227,227)
         net.blobs['data'].data[...] = image
         net.forward()
         features = net.blobs[extractionLayerName].data[0]
@@ -225,7 +266,7 @@ def main(argv):
     images_dir = ''
     annotations_dir = ''
     try:
-        opts, args = getopt.getopt(argv, "hm:w:i:a:")
+        opts, args = getopt.getopt(argv, "hm:w:i:a:n:")
         print opts
     except getopt.GetoptError:
         print 'CNN_SVM_main.py -m <model_file> -w <weight_file> -i <images_dir> -a <annotations_dir> -n <cnn_type>'
@@ -252,12 +293,7 @@ def main(argv):
 
 
     interesting_labels = ['aeroplane','bird','cat','boat','horse']
-    if cnn_type == 'googlenet':
-		extractionLayerName = 'pool5/7x7_s1'
-	elif cnn_type =='vggnet':
-		extractionLayerName = 'fc8'
-	elif cnn_type == 'resnet':
-		extracionLayerName = 'fc1000'
+    
 
 
     if os.path.isfile(model_filename):
@@ -274,13 +310,22 @@ def main(argv):
                    weight_filename,  # contains the trained weights
                   caffe.TEST)     # use test mode (e.g., don't perform dropout)
 
-    if extractionLayerName not in net.blobs:
-        raise TypeError("Network " +model_filename + " does not contain layer with name: " + extractionLayerName)
-		sys.exit(2)
+    images_dir = 'VOC2007/JPEGImages'
+    annotations_dir = 'VOC2007/Annotations'
+
+    train_images = 'train_images'
+    train_annotations = 'train_annotations'
+
+    test_images = 'test_images'
+    test_annotations = 'test_annotations'
+
+    [trainList, testList] = splitTrainTest(annotations_dir, interesting_labels, percentage)
+
+    [noveltySVM, multiclassSVM] = trainSVMsFromCroppedImages(net, cnn_type, trainList, images_dir, train_images, annotations_dir, train_annotations,interesting_labels)
+    
+    test(net, cnn_type, noveltySVM, multiclassSVM, testList,images_dir, test_images,annotations_dir,  test_annotations,interesting_labels):
 
 
-    [noveltySVM, multiclassSVM] = trainSVMsFromCroppedImages(net, extractionLayerName, images_dir, annotations_dir,interesting_labels)
-   
 
 
 if __name__=='__main__':	

@@ -5,31 +5,67 @@ import argparse
 import sys
 import cv2
 from collections import OrderedDict
+import random 
+import math
 
+def splitTrainTest(annotations_dir, interesting_labels, percentage):
+    
+    #images = "all_images.txt"
+    images = []
+    trainFilename = "trainSet.txt"
+    testFilename = "testSet.txt"
 
-def getBBs(annotations_dir_in, annotations_dict, interesting_labels):
-    for root, dirs, files in walk(annotations_dir_in):
+    #with open (images,'w') as myfile:
+    for root, dirs, files in walk(annotations_dir):
         for file in files:
             name, extension = file.split(".")
             if extension == "xml":
                 xml_path = join(root, file)
                 tree = ET.parse(xml_path)
                 root_xml = tree.getroot()
-                #filename = root_xml.find("filename").text
-                obj_number = 0
-                for object in root_xml.findall("object"):
-                    label = object.find("name").text
-                    if label in interesting_labels or not interesting_labels:
-                        bndbox = object.find("bndbox")
-                        annotations_dict[name+"_"+str(obj_number)] = {}
-                        annotations_dict[name+"_"+str(obj_number)]["xmin"] = bndbox.find("xmin").text
-                        annotations_dict[name+"_"+str(obj_number)]["ymin"] = bndbox.find("ymin").text
-                        annotations_dict[name+"_"+str(obj_number)]["xmax"] = bndbox.find("xmax").text
-                        annotations_dict[name+"_"+str(obj_number)]["ymax"] = bndbox.find("ymax").text
-                        annotations_dict[name+"_"+str(obj_number)]["label"] = label
-                        obj_number += 1
-    return
 
+                for obj in root_xml.findall("object"):
+                    label = obj.find("name").text
+                    if label in interesting_labels:
+                        images.append(name)
+                        break
+    numElements = len(images)
+    print numElements
+    rangeImageIndices = range(numElements)
+    numberTrainSample = int(round(percentage*numElements))   
+    trainIndices = random.sample(rangeImageIndices, numberTrainSample) 
+
+    trainSet = []
+    testSet = []
+
+    for i in range(numElements):
+        if i in trainIndices:
+            trainSet.append(images[i])
+        else:
+            testSet.append(images[i])
+
+    return trainSet, testSet
+
+def getBBs(imagesSet, annotations_dir_in, annotations_dict, interesting_labels):
+    
+    for image in imagesSet:
+        path = annotations_dir_in + '/' + image + '.xml'
+        tree = ET.parse(path)
+        root_xml = tree.getroot()
+        #filename = root_xml.find("filename").text
+        obj_number = 0
+        for object in root_xml.findall("object"):
+            label = object.find("name").text
+            if label in interesting_labels or not interesting_labels:
+                bndbox = object.find("bndbox")
+                annotations_dict[name+"_"+str(obj_number)] = {}
+                annotations_dict[name+"_"+str(obj_number)]["xmin"] = bndbox.find("xmin").text
+                annotations_dict[name+"_"+str(obj_number)]["ymin"] = bndbox.find("ymin").text
+                annotations_dict[name+"_"+str(obj_number)]["xmax"] = bndbox.find("xmax").text
+                annotations_dict[name+"_"+str(obj_number)]["ymax"] = bndbox.find("ymax").text
+                annotations_dict[name+"_"+str(obj_number)]["label"] = label
+                obj_number += 1
+    return
 
 def dumpDictToXMLs(images_dir_out, annotations_dir_out, annotations_dict):
 
@@ -54,38 +90,34 @@ def dumpDictToXMLs(images_dir_out, annotations_dir_out, annotations_dict):
 
     return
 
+def cropImages(imagesSet, image_dir_in, images_dir_out, annotations_dict):
 
-
-def cropImages(images_dir_in, images_dir_out, annotations_dict):
-    for root, dirs, files in walk(images_dir_in):
-        for image_name in files:
-            name, extension = image_name.split(".")
-            if extension == "jpg":
-                image_path = join(root, image_name)
-                image = cv2.imread(image_path)
-                #cv2.imshow("original", image)
-                for key, features in annotations_dict.iteritems():
-                    if name in key:
-                        xmin = int(features["xmin"])
-                        ymin = int(features["ymin"])
-                        xmax = int(features["xmax"])
-                        ymax = int(features["ymax"])
-                        #cv2.waitKey(0)
-                        cropped_image = image[ymin:ymax, xmin:xmax]
-                        #cv2.imshow("cropped", cropped_image)
-                        #cv2.waitKey(0)
-                        out_path = join(images_dir_out, key+".jpg")
-                        cv2.imwrite(out_path, cropped_image)
+    for image_name in imagesSet:
+        image_name = image_name + ".jpg"
+        image_path = join(image_dir_in, image_name)
+        image = cv2.imread(image_path)
+        #cv2.imshow("original", image)
+        for key, features in annotations_dict.iteritems():
+            if name in key:
+                xmin = int(features["xmin"])
+                ymin = int(features["ymin"])
+                xmax = int(features["xmax"])
+                ymax = int(features["ymax"])
+                #cv2.waitKey(0)
+                cropped_image = image[ymin:ymax, xmin:xmax]
+                #cv2.imshow("cropped", cropped_image)
+                #cv2.waitKey(0)
+                out_path = join(images_dir_out, key+".jpg")
+                cv2.imwrite(out_path, cropped_image)
 
     return
 
+def extractBBoxesImages(imagesSet, images_dir_in, annotations_dir_in, images_dir_out, annotations_dir_out, interesting_labels):
 
-def extractBBoxesImages(annotations_dir_in,annotations_dir_out,images_dir_in,images_dir_out, interesting_labels ):
 
-
-    if not isdir(annotations_dir_in) or not isdir(images_dir_in):
-        print "The input directories are not valid"
-        sys.exit(2)
+    #if not isdir(annotations_dir_in) or not isdir(images_dir_in):
+    #    print "The input directories are not valid"
+    #    sys.exit(2)
     if not isdir(annotations_dir_out):
         try:
             mkdir(annotations_dir_out)
@@ -101,15 +133,9 @@ def extractBBoxesImages(annotations_dir_in,annotations_dir_out,images_dir_in,ima
 
     annotations_dict = {}
 
-    getBBs(annotations_dir_in, annotations_dict,interesting_labels)
+    getBBs(imagesSet, annotations_dir_in, annotations_dict, interesting_labels)
     dumpDictToXMLs(images_dir_out, annotations_dir_out, annotations_dict)
-    cropImages(images_dir_in, images_dir_out, annotations_dict)
-
-
-
-
-
-
+    cropImages(imagesSet, images_dir_in, images_dir_out, annotations_dict)
 
 
 
