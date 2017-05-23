@@ -16,6 +16,7 @@ import random
 import xml.etree.ElementTree as ET
 import hashlib
 import glob
+import argparse
 from sklearn.metrics import confusion_matrix
 
 from divide_et_impera import extractBBoxesImages, splitTrainTest
@@ -177,7 +178,7 @@ def trainSVMsFromCroppedImages(net, networkName, trainList, images_dir_in, annot
 		nu =  [x for x in np.logspace(-4, 0, 20)]  
 		gamma = [x for x in np.logspace(-4,0,20)]
 		C = [x for x in np.logspace(-1, 10, 30)]
-		n_estimators = [int(round(x)) for x in np.logspace(1, 5,20)]
+		n_estimators = [int(round(x)) for x in np.logspace(1, 5, 20)]
 		contamination = [x for x in np.linspace(0, 0.5, 10)]
 		classifiers = {
 		"oneClass": (svm.OneClassSVM(),{"nu": nu,
@@ -212,9 +213,11 @@ def trainSVMsFromCroppedImages(net, networkName, trainList, images_dir_in, annot
 
     else:
 
-		noveltySVM = svm.OneClassSVM(nu=0.0075, kernel = "rbf", gamma = 0.1)
+		#noveltyCLS = svm.OneClassSVM(nu=0.013, kernel = "rbf", gamma = 0.0078)
+		noveltyCLS = svm.SVC(C=621.017, kernel = "rbf")
+        
 
-		noveltySVM.fit(featureVectorsClassificationTrainNormalizedCentered)
+		noveltyCLS.fit(featureVectorsTrainNormalizedCentered, labelsNovelty)
     
 
 
@@ -226,7 +229,7 @@ def trainSVMsFromCroppedImages(net, networkName, trainList, images_dir_in, annot
 
 
 
-    return [noveltySVM, multiclassSVM]
+    return [noveltyCLS, multiclassSVM]
 
 
 
@@ -293,7 +296,6 @@ def test(net, networkName, noveltySVM, multiclassSVM, testList, images_dir_in, a
 	
 	
     for idx, isInlier in enumerate(isInliers):
-        print isInlier
         isInlier = int(isInlier)		
         if isInlier == -1 and labelsTest[idx] == 'unknown':
             correctOutlier+=1
@@ -386,32 +388,33 @@ def main(argv):
     weight_filename = ''
     images_dir = 'VOC2007/JPEGImages'
     annotations_dir = 'VOC2007/Annotations'
+    gridsearch = False
     caffe.set_mode_cpu()
-    try:
-        opts, args = getopt.getopt(argv, "hm:w:i:a:n:g")
-        print opts
-    except getopt.GetoptError:
-        print 'CNN_SVM_main.py -m <model_file> -w <weight_file> -i <images_dir> -a <annotations_dir> -n <cnn_type>'
-        sys.exit(2)
-    for opt, arg in opts:
-        if opt == '-h':
-            print 'CNN_SVM_main.py -m <model_file> -w <weight_file> -i <images_dir> -a <annotations_dir> -n <cnn_type>'
-            sys.exit()
-        elif opt == "-m":
-            model_filename = arg
-        elif opt == "-w":
-            weight_filename = arg
-        elif opt == "-i":
-            images_dir = arg
-        elif opt == "-a":
-            annotations_dir = arg
-        elif opt == "-n":
-        	cnn_type = arg
-        elif opt == "-g":
-			caffe.set_mode_gpu()
-			caffe.set_device(0)
-            #print "GPU POWER!!!"
-
+    parser = argparse.ArgumentParser()
+    parser.add_argument("-w", "--weights", help="caffemodel file")
+    parser.add_argument("-p", "--prototxt", help="prototxt file")
+    parser.add_argument("-i", "--input_im", help="input images dir")
+    parser.add_argument("-a", "--annotations_dir", help="input annotations dir")
+    parser.add_argument("-n", "--net_type", help="cnn type (resnet/googlenet/vggnet")
+    parser.add_argument("-g", "--gpu", help="enable gpu mode", action='store_true')
+    parser.add_argument("-s", "--search", help="enable gridsearch", action='store_true')
+    args = parser.parse_args()
+    if args.prototxt:
+        model_filename = args.prototxt
+    if args.weights:
+        weight_filename = args.weights
+    if args.input_im:
+        images_dir = args.input_im
+    if args.annotations_dir:
+        annotations_dir = args.annotations_dir
+    if args.net_type:
+    	cnn_type = args.net_type
+    if args.gpu:
+		caffe.set_mode_gpu()
+		caffe.set_device(0)
+        #print "GPU POWER!!!"
+    if args.search:
+        gridsearch = True
 
 
     print 'model file is ', model_filename
@@ -445,8 +448,6 @@ def main(argv):
     test_annotations = 'test_annotations'
 
     percentage = 0.7
-
-    gridsearch = False
 
     [trainList, testList] = splitTrainTest(annotations_dir, interesting_labels, percentage)
 
