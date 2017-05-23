@@ -122,14 +122,15 @@ def extractBBoxesImages(imagesSet, images_dir_in, annotations_dir_in, images_dir
         except OSError as e:
             print e
             sys.exit(2)
-    else:
+
         annotations_dict = {}
 
         getBBs(imagesSet, annotations_dir_in, annotations_dict, interesting_labels)
         dumpDictToXMLs(images_dir_out, annotations_dir_out, annotations_dict)
         cropImages(imagesSet, images_dir_in, images_dir_out, annotations_dict)
-
-    return
+    
+    else:
+        return
 
 
 
