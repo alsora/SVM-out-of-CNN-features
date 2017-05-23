@@ -23,6 +23,8 @@ from divide_et_impera import extractBBoxesImages, splitTrainTest
 from caffe.io import array_to_blobproto
 from collections import defaultdict
 from skimage import io
+from sklearn.ensemble import IsolationForest
+from sklearn.model_selection import GridSearchCV
 
 from compute_mean import compute_mean 
 
@@ -75,9 +77,9 @@ def createSamplesDatastructures(images_dir, annotations_dir, interesting_labels,
 
 
 
-def trainSVMsFromCroppedImages(net, networkName, trainList, images_dir_in, annotations_dir_in, images_dir_out, annotations_dir_out,interesting_labels):
+def trainSVMsFromCroppedImages(net, networkName, trainList, images_dir_in, annotations_dir_in, images_dir_out, annotations_dir_out,interesting_labels, gridsearch = False):
 
-    extractBBoxesImages(trainList,images_dir_in,annotations_dir_in, images_dir_out, annotations_dir_out, interesting_labels)
+    extractBBoxesImages(trainList,images_dir_in,annotations_dir_in, images_dir_out, annotations_dir_out, [])# interesting_labels)
 
     [filesTrainNames, imagesTrain, labelsTrain] = createSamplesDatastructures(images_dir_out, annotations_dir_out, interesting_labels, 'voc')
 
@@ -98,7 +100,7 @@ def trainSVMsFromCroppedImages(net, networkName, trainList, images_dir_in, annot
         extractionLayerName = netLayers[networkName]
         t1 = time.time()
         featureVectorsTrain = extractFeatures(imagesTrain, net, extractionLayerName)
-        print 'Features extraction took ',(time.time() - t1) ,' seconds for ', len(imagesTrain), ' images'
+        print '\nFeatures extraction took ',(time.time() - t1) ,' seconds for ', len(imagesTrain), ' images'
 
         #Dump features in a file 
         with open(trainFeaturesFileName, 'wb') as trainFeaturesFile:
@@ -111,6 +113,16 @@ def trainSVMsFromCroppedImages(net, networkName, trainList, images_dir_in, annot
         with open(trainFeaturesFileName, 'rb') as trainFeaturesFile:
             (filesTrainNames, featureVectorsTrain) = pickle.load(trainFeaturesFile)
             featureVectorsTrain = np.array(featureVectorsTrain)
+
+    imagesClassificationTrain = []
+    labelsClassificationTrain = []
+    featuresVectorClassificationTrain = []
+ 
+    for idx in range(len(labelsTrain)):
+        if labelsTrain[idx] is not 'unknown':
+            imagesClassificationTrain.append(imagesTrain[idx])
+            labelsClassificationTrain.append(labelsTrain[idx])
+            featuresVectorClassificationTrain.append(featureVectorsTrain[idx])
 
 
     featureVectorsTrainNormalized = []
@@ -128,14 +140,89 @@ def trainSVMsFromCroppedImages(net, networkName, trainList, images_dir_in, annot
         featureVectorsTrainNormalizedCentered.append(vecCentered)
 
 
-    #Creates and train 2 svms: a novelty detector and a multi class classifier one
-    noveltySVM = svm.OneClassSVM(nu=0.1, kernel="rbf", gamma=0.1)
-    multiclassSVM = svm.SVC(kernel="rbf", C=1e6, probability=True) # little regularization needed - get this training set right, neglect margin
 
-    t1 = time.time()
-    noveltySVM.fit(featureVectorsTrainNormalizedCentered)
-    multiclassSVM.fit(featureVectorsTrainNormalizedCentered, labelsTrain)
-    print 'SVMs training took ',(time.time() - t1) ,' seconds'
+    featureVectorsClassificationTrainNormalized = []
+
+    for vec in featuresVectorClassificationTrain:
+        vecNormalized = vec/np.linalg.norm(vec)
+        featureVectorsClassificationTrainNormalized.append(vecNormalized)
+
+    classificationTrainMean = np.mean(featureVectorsClassificationTrainNormalized, axis = 0)
+
+    featureVectorsClassificationTrainNormalizedCentered = []
+
+    for vec in featureVectorsClassificationTrainNormalized:
+        vecCentered = vec - classificationTrainMean
+        featureVectorsClassificationTrainNormalizedCentered.append(vecCentered)
+
+
+
+
+
+    labelsNovelty = []
+
+    for label in labelsTrain:
+        if label == 'unknown':
+             labelsNovelty.append(-1)
+        else:
+             labelsNovelty.append(1)
+
+
+
+
+###########################################
+
+    if gridsearch:
+
+		nu =  [x for x in np.logspace(-4, 0, 20)]  
+		gamma = [x for x in np.logspace(-4,0,20)]
+		C = [x for x in np.logspace(-1, 10, 30)]
+		n_estimators = [int(round(x)) for x in np.logspace(1, 5,20)]
+		contamination = [x for x in np.linspace(0, 0.5, 10)]
+		classifiers = {
+		"oneClass": (svm.OneClassSVM(),{"nu": nu,
+		"gamma": gamma}),
+		"2Class": (svm.SVC(),{"C": C}),
+		"Forest": (IsolationForest(),{"n_estimators": n_estimators,
+		"contamination": contamination}	)	}
+
+		score = 0
+
+	
+		for name_estimator, (estimator, params) in classifiers.iteritems():
+		    print name_estimator
+		    clf = GridSearchCV(estimator, params, n_jobs = -1, cv = 5, scoring = "accuracy")
+		    if name_estimator is "oneClass" or name_estimator is "Forest":
+		        trainDataSet = np.asarray(featureVectorsClassificationTrainNormalizedCentered)
+		        labels = [1 for x in range(len(featureVectorsClassificationTrainNormalizedCentered))]
+		        clf.fit(trainDataSet, labels)
+		    else:
+		        trainDataSet = featureVectorsTrainNormalizedCentered
+
+		        labels = labelsNovelty
+
+		        clf.fit(trainDataSet, labels)
+
+		    print "Estimator: ", name_estimator, "\n", clf.best_params_, " score: ", clf.best_score_   
+
+		    if clf.best_score_ > score:
+		        score = clf.best_score_
+		        noveltySVM = clf.best_estimator_
+
+
+    else:
+
+		noveltySVM = svm.OneClassSVM(nu=0.0075, kernel = "rbf", gamma = 0.1)
+
+		noveltySVM.fit(featureVectorsClassificationTrainNormalizedCentered)
+    
+
+
+
+    multiclassSVM = svm.SVC(kernel="rbf", C=1e6, probability=True)
+
+    multiclassSVM.fit(featureVectorsClassificationTrainNormalizedCentered, labelsClassificationTrain)
+
 
 
 
@@ -166,7 +253,7 @@ def test(net, networkName, noveltySVM, multiclassSVM, testList, images_dir_in, a
         extractionLayerName = netLayers[networkName]
         t1 = time.time()
         featureVectorsTest = extractFeatures(imagesTest, net, extractionLayerName)
-        print 'Features extraction took ',(time.time() - t1) ,' seconds for ', len(imagesTest), ' images'
+        print '\nFeatures extraction took ',(time.time() - t1) ,' seconds for ', len(imagesTest), ' images'
 
         #Dump features in a file 
         with open(testFeaturesFileName, 'wb') as testFeaturesFile:
@@ -197,29 +284,34 @@ def test(net, networkName, noveltySVM, multiclassSVM, testList, images_dir_in, a
 
 
     correctOutlier = 0
+    correctInlier = 0
     correctClass = 0
     numPredicted = 0
 
-    for idx, featuresVec in enumerate(featureVectorsTestNormalizedCentered):
-
-        isInlier = noveltySVM.predict(featuresVec)
-        #predict should return +1 or -1
-        if isInlier is -1 and labelsTest[idx] is 'unknown':
-             correctOutlier+=1
+    isInliers = noveltySVM.predict(featureVectorsTestNormalizedCentered)
+    predictions = multiclassSVM.predict(featureVectorsTestNormalizedCentered)
+	
+	
+    for idx, isInlier in enumerate(isInliers):
         print isInlier
-        if isInlier is 1:
+        isInlier = int(isInlier)		
+        if isInlier == -1 and labelsTest[idx] == 'unknown':
+            correctOutlier+=1
+        if isInlier == 1 and labelsTest[idx] is not 'unknown':
+            correctInlier+=1
+        if isInlier == 1:
             numPredicted+=1
-            prediction = multiclassSVM.predict(featuresVec)
-
-            if prediction is labelsTest[idx]:
+            if predictions[idx] == labelsTest[idx]:
                 correctClass+=1
 
-
     numInterestingSamples = sum(i is not 'unknown' for i in labelsTest)
-    numSamples = len(labelsTest)
-    accuracy = 100*correctClass/numPredicted
-    recall = 100*correctClass/numInterestingSamples
-    precision = 100*(correctClass + correctOutlier)/numSamples
+    numSamples = len(labelsTest)    
+    print 'num interesting labels {}\nunknown {}\ntotal {}\ncorrect outliers {}\ncorrect inlier {}'.format(numInterestingSamples, numSamples-numInterestingSamples, numSamples, correctOutlier, correctInlier)
+    
+    precision = 100.*correctClass/numPredicted
+    recall = 100.*correctClass/numInterestingSamples
+    accuracy = 100.*(correctClass + correctOutlier)/numSamples
+    noveltyPrecision = 100.* (correctOutlier + correctInlier)/numSamples
 
     print 'Accuracy: ', accuracy, ' Precision: ', precision, ' Recall: ', recall
 
@@ -237,7 +329,7 @@ def readLabelFromAnnotation(annotationFileName, interesting_labels):
         if label in interesting_labels:
             return label
         else:
-            return 'unknwon'
+            return 'unknown'
 
 
 def extractFeatures(imageSet, net, extractionLayerName):
@@ -354,9 +446,11 @@ def main(argv):
 
     percentage = 0.7
 
+    gridsearch = False
+
     [trainList, testList] = splitTrainTest(annotations_dir, interesting_labels, percentage)
 
-    [noveltySVM, multiclassSVM] = trainSVMsFromCroppedImages(net, cnn_type, trainList, images_dir,annotations_dir,  train_images, train_annotations, interesting_labels)
+    [noveltySVM, multiclassSVM] = trainSVMsFromCroppedImages(net, cnn_type, trainList, images_dir,annotations_dir,  train_images, train_annotations, interesting_labels, gridsearch)
     
     test(net, cnn_type, noveltySVM, multiclassSVM, testList,images_dir,annotations_dir, test_images,  test_annotations, interesting_labels)
 
