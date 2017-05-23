@@ -4,20 +4,15 @@ os.environ['GLOG_minloglevel'] = '3'
 
 import caffe
 import itertools
-from datetime import datetime
 import numpy as np
 import matplotlib.pyplot as plt
-import sys, getopt
-import cv2
+import sys
 import pickle
 from sklearn import svm
 import time
-import random
-import xml.etree.ElementTree as ET
-import hashlib
-import glob
 import argparse
 from sklearn.metrics import confusion_matrix
+from dataset_utils import createSamplesDatastructures, normalizeData, readLabelFromAnnotation
 
 from divide_et_impera import extractBBoxesImages, splitTrainTest
 
@@ -27,8 +22,6 @@ from skimage import io
 from sklearn.ensemble import IsolationForest
 from sklearn.model_selection import GridSearchCV
 
-from compute_mean import compute_mean 
-
 
 netLayers = {
     'googlenet':'pool5/7x7_s1',
@@ -37,52 +30,17 @@ netLayers = {
 
 }
 
-
-def backspace(n):
-    sys.stdout.write('\r'+n)
-    sys.stdout.flush()
+interesting_labels = {'voc':['aeroplane','bird','cat','boat','horse']}
 
 
 
-def createSamplesDatastructures(images_dir, annotations_dir, interesting_labels, mode):
+def trainSVMsFromCroppedImages(net, networkName, trainList, images_dir_in, annotations_dir_in, images_dir_out, annotations_dir_out,mode, gridsearch = False):
 
+    classes = interesting_labels[mode]
 
-    samplesNames = []
-    samplesImages = []
-    samplesLabels = []
+    extractBBoxesImages(trainList,images_dir_in,annotations_dir_in, images_dir_out, annotations_dir_out)
 
-
-    if mode == 'voc':
-
-        for root, dirs, files in os.walk(images_dir):
-            for image_name in files:
-                name, extension = image_name.split(".")
-
-                samplesNames.append(name)
-
-                imageCompletePath = images_dir + '/' + image_name
-                image = caffe.io.load_image(imageCompletePath)
-                samplesImages.append(image)
-
-                annotationCompletePath = annotations_dir + '/' + name + '.xml'
-                label = readLabelFromAnnotation(annotationCompletePath, interesting_labels)
-                samplesLabels.append(label)
-
-        imagesFolderPath = images_dir
-        annotationsFolderPath = annotations_dir
-
-
-        return [samplesNames, samplesImages, samplesLabels]
-
-
-
-
-
-def trainSVMsFromCroppedImages(net, networkName, trainList, images_dir_in, annotations_dir_in, images_dir_out, annotations_dir_out,interesting_labels, gridsearch = False):
-
-    extractBBoxesImages(trainList,images_dir_in,annotations_dir_in, images_dir_out, annotations_dir_out, [])# interesting_labels)
-
-    [filesTrainNames, imagesTrain, labelsTrain] = createSamplesDatastructures(images_dir_out, annotations_dir_out, interesting_labels, 'voc')
+    [filesTrainNames, imagesTrain, labelsTrain] = createSamplesDatastructures(images_dir_out, annotations_dir_out, classes, mode)
 
     trainFeaturesFileName = 'trainFeatures' + networkName + '.b'
 
@@ -107,6 +65,8 @@ def trainSVMsFromCroppedImages(net, networkName, trainList, images_dir_in, annot
         with open(trainFeaturesFileName, 'wb') as trainFeaturesFile:
             pickle.dump((filesTrainNames, featureVectorsTrain), trainFeaturesFile)
 
+
+
     else:
 
         print 'Opening old features.... '
@@ -115,63 +75,21 @@ def trainSVMsFromCroppedImages(net, networkName, trainList, images_dir_in, annot
             (filesTrainNames, featureVectorsTrain) = pickle.load(trainFeaturesFile)
             featureVectorsTrain = np.array(featureVectorsTrain)
 
-    imagesClassificationTrain = []
-    labelsClassificationTrain = []
-    featuresVectorClassificationTrain = []
- 
-    for idx in range(len(labelsTrain)):
-        if labelsTrain[idx] is not 'unknown':
-            imagesClassificationTrain.append(imagesTrain[idx])
-            labelsClassificationTrain.append(labelsTrain[idx])
-            featuresVectorClassificationTrain.append(featureVectorsTrain[idx])
 
 
-    featureVectorsTrainNormalized = []
+	interestingIndices = [idx for idx, x in enumerate(labelsTrain) if x is not  'unknown']
 
-    for vec in featureVectorsTrain:
-        vecNormalized = vec/np.linalg.norm(vec)
-        featureVectorsTrainNormalized.append(vecNormalized)
+	interestingImagesTrain = [x for idx, x in enumerate(imagesTrain) if idx in interestingIndices]
+	interestingLabelsTrain = [x for idx, x in enumerate(labelsTrain) if idx in interestingIndices]
+	interestingFeaturesVectorTrain = [x for idx, x in enumerate(featureVectorsTrain) if idx in interestingIndices]
 
-    trainMean = np.mean(featureVectorsTrainNormalized, axis = 0)
-
-    featureVectorsTrainNormalizedCentered = []
-
-    for vec in featureVectorsTrainNormalized:
-        vecCentered = vec - trainMean
-        featureVectorsTrainNormalizedCentered.append(vecCentered)
+	inlier_outlierLabels = [1 if idx in interestingIndices else -1 for idx in range(len(labelsTrain))]
 
 
+	featureVectorsTrain = normalizeData(featureVectorsTrain)
 
-    featureVectorsClassificationTrainNormalized = []
+	interestingFeaturesVectorTrain = normalizeData(interestingFeaturesVectorTrain)
 
-    for vec in featuresVectorClassificationTrain:
-        vecNormalized = vec/np.linalg.norm(vec)
-        featureVectorsClassificationTrainNormalized.append(vecNormalized)
-
-    classificationTrainMean = np.mean(featureVectorsClassificationTrainNormalized, axis = 0)
-
-    featureVectorsClassificationTrainNormalizedCentered = []
-
-    for vec in featureVectorsClassificationTrainNormalized:
-        vecCentered = vec - classificationTrainMean
-        featureVectorsClassificationTrainNormalizedCentered.append(vecCentered)
-
-
-
-
-
-    labelsNovelty = []
-
-    for label in labelsTrain:
-        if label == 'unknown':
-             labelsNovelty.append(-1)
-        else:
-             labelsNovelty.append(1)
-
-
-
-
-###########################################
 
     if gridsearch:
 
@@ -194,13 +112,16 @@ def trainSVMsFromCroppedImages(net, networkName, trainList, images_dir_in, annot
 		    print name_estimator
 		    clf = GridSearchCV(estimator, params, n_jobs = -1, cv = 5, scoring = "accuracy")
 		    if name_estimator is "oneClass" or name_estimator is "Forest":
-		        trainDataSet = np.asarray(featureVectorsClassificationTrainNormalizedCentered)
-		        labels = [1 for x in range(len(featureVectorsClassificationTrainNormalizedCentered))]
+		        
+		        trainDataSet = np.asarray(interestingFeaturesVectorTrain)
+		        labels = [1 for x in range(len(interestingFeaturesVectorTrain))]
+		      
 		        clf.fit(trainDataSet, labels)
+		   
 		    else:
-		        trainDataSet = featureVectorsTrainNormalizedCentered
-
-		        labels = labelsNovelty
+		        
+		        trainDataSet = featureVectorsTrain
+		        labels = inlier_outlierLabels
 
 		        clf.fit(trainDataSet, labels)
 
@@ -208,24 +129,21 @@ def trainSVMsFromCroppedImages(net, networkName, trainList, images_dir_in, annot
 
 		    if clf.best_score_ > score:
 		        score = clf.best_score_
-		        noveltySVM = clf.best_estimator_
+		        noveltyCLS = clf.best_estimator_
 
 
     else:
 
-		#noveltyCLS = svm.OneClassSVM(nu=0.013, kernel = "rbf", gamma = 0.0078)
-		noveltyCLS = svm.SVC(C=621.017, kernel = "rbf")
+		noveltyCLS = svm.OneClassSVM(nu=0.013, kernel = "rbf", gamma = 0.0078)
+		noveltyCLS.fit(interestingFeaturesVectorTrain)
         
-
-		noveltyCLS.fit(featureVectorsTrainNormalizedCentered, labelsNovelty)
+		#noveltyCLS = svm.SVC(C=621.017, kernel = "rbf")
+		#noveltyCLS.fit(featureVectorsTrain, inlier_outlierLabels)
     
 
 
-
     multiclassSVM = svm.SVC(kernel="rbf", C=1e6, probability=True)
-
-    multiclassSVM.fit(featureVectorsClassificationTrainNormalizedCentered, labelsClassificationTrain)
-
+    multiclassSVM.fit(interestingFeaturesVectorTrain, interestingLabelsTrain)
 
 
 
@@ -233,11 +151,13 @@ def trainSVMsFromCroppedImages(net, networkName, trainList, images_dir_in, annot
 
 
 
-def test(net, networkName, noveltySVM, multiclassSVM, testList, images_dir_in, annotations_dir_in, images_dir_out, annotations_dir_out,interesting_labels):
+def test(net, networkName, noveltyCLS, multiclassSVM, testList, images_dir_in, annotations_dir_in, images_dir_out, annotations_dir_out,mode):
 
-    extractBBoxesImages(testList,images_dir_in,annotations_dir_in, images_dir_out, annotations_dir_out, [])
+    classes = interesting_labels[mode]
 
-    [filesTestNames, imagesTest, labelsTest] = createSamplesDatastructures(images_dir_out, annotations_dir_out, interesting_labels, 'voc')
+    extractBBoxesImages(testList,images_dir_in,annotations_dir_in, images_dir_out, annotations_dir_out)
+
+    [filesTestNames, imagesTest, labelsTest] = createSamplesDatastructures(images_dir_out, annotations_dir_out, classes, mode)
 
     testFeaturesFileName = 'testFeatures' + networkName + '.b'
 
@@ -262,6 +182,8 @@ def test(net, networkName, noveltySVM, multiclassSVM, testList, images_dir_in, a
         with open(testFeaturesFileName, 'wb') as testFeaturesFile:
             pickle.dump((filesTestNames, featureVectorsTest), testFeaturesFile)
 
+
+
     else:
 
         print 'Opening old features.... '
@@ -270,37 +192,27 @@ def test(net, networkName, noveltySVM, multiclassSVM, testList, images_dir_in, a
             (filesTestNames, featureVectorsTest) = pickle.load(testFeaturesFile)
             featureVectorsTest = np.array(featureVectorsTest)
 
-    featureVectorsTestNormalized = []
 
-    for vec in featureVectorsTest:
-        vecNormalized = vec/np.linalg.norm(vec)
-        featureVectorsTestNormalized.append(vecNormalized)
-
-    testMean = np.mean(featureVectorsTestNormalized, axis = 0)
-
-    featureVectorsTestNormalizedCentered = []
-
-    for vec in featureVectorsTestNormalized:
-        vecCentered = vec - testMean
-        featureVectorsTestNormalizedCentered.append(vecCentered)
-
-
+    featureVectorsTest = normalizeData(featureVectorsTest)
 
     correctOutlier = 0
     correctInlier = 0
     correctClass = 0
     numPredicted = 0
 
-    isInliers = noveltySVM.predict(featureVectorsTestNormalizedCentered)
-    predictions = multiclassSVM.predict(featureVectorsTestNormalizedCentered)
+    isInliers = noveltyCLS.predict(featureVectorsTest)
+    predictions = multiclassSVM.predict(featureVectorsTest)
 	
 	
     for idx, isInlier in enumerate(isInliers):
+        
         isInlier = int(isInlier)		
         if isInlier == -1 and labelsTest[idx] == 'unknown':
             correctOutlier+=1
         if isInlier == 1 and labelsTest[idx] is not 'unknown':
             correctInlier+=1
+        
+
         if isInlier == 1:
             numPredicted+=1
             if predictions[idx] == labelsTest[idx]:
@@ -318,20 +230,9 @@ def test(net, networkName, noveltySVM, multiclassSVM, testList, images_dir_in, a
     print 'Accuracy: ', accuracy, ' Precision: ', precision, ' Recall: ', recall
 
 
-
-
-
-def readLabelFromAnnotation(annotationFileName, interesting_labels):
-    #Parse the given annotation file and read the label
-
-    tree = ET.parse(annotationFileName)
-    root = tree.getroot()
-    for obj in root.findall('object'):
-        label = obj.find("name").text
-        if label in interesting_labels:
-            return label
-        else:
-            return 'unknown'
+def backspace(n):
+    sys.stdout.write('\r'+n)
+    sys.stdout.flush()
 
 
 def extractFeatures(imageSet, net, extractionLayerName):
@@ -339,13 +240,14 @@ def extractFeatures(imageSet, net, extractionLayerName):
     featuresVector = []
     totalImages = len(imageSet)
     for num, image in enumerate(imageSet):
-        #net.blobs['data'].reshape(1,3,227,227)
+
         net.blobs['data'].data[...] = image
         net.forward()
         features = net.blobs[extractionLayerName].data[0]
         featuresVector.append(features.copy().flatten())
         string_to_print = '{} of {}'.format(num, totalImages)
         backspace(string_to_print)
+
     return featuresVector
 
 
@@ -386,19 +288,24 @@ def main(argv):
 
     model_filename = ''
     weight_filename = ''
+    cnn_type = ''
+    mode = 'voc'
     images_dir = 'VOC2007/JPEGImages'
     annotations_dir = 'VOC2007/Annotations'
     gridsearch = False
     caffe.set_mode_cpu()
+
     parser = argparse.ArgumentParser()
     parser.add_argument("-w", "--weights", help="caffemodel file")
     parser.add_argument("-p", "--prototxt", help="prototxt file")
     parser.add_argument("-i", "--input_im", help="input images dir")
     parser.add_argument("-a", "--annotations_dir", help="input annotations dir")
+    parser.add_argument("-t", "--dataset_type", help="dataset type (voc/imagenet/coco)")    
     parser.add_argument("-n", "--net_type", help="cnn type (resnet/googlenet/vggnet")
     parser.add_argument("-g", "--gpu", help="enable gpu mode", action='store_true')
     parser.add_argument("-s", "--search", help="enable gridsearch", action='store_true')
     args = parser.parse_args()
+
     if args.prototxt:
         model_filename = args.prototxt
     if args.weights:
@@ -407,12 +314,13 @@ def main(argv):
         images_dir = args.input_im
     if args.annotations_dir:
         annotations_dir = args.annotations_dir
+    if args.dataset_type:
+    	mode = args.dataset_type
     if args.net_type:
     	cnn_type = args.net_type
     if args.gpu:
 		caffe.set_mode_gpu()
 		caffe.set_device(0)
-        #print "GPU POWER!!!"
     if args.search:
         gridsearch = True
 
@@ -421,12 +329,7 @@ def main(argv):
     print 'weight file is ', weight_filename
     print 'images dir is ', images_dir
     print 'annotations dir is ', annotations_dir
-    print 'the cnn is ', cnn_type	
-
-
-    interesting_labels = ['aeroplane','bird','cat','boat','horse']
-    
-
+    print 'the cnn is ', cnn_type	    
 
     if os.path.isfile(model_filename):
         print 'Caffe model found.'
@@ -434,27 +337,24 @@ def main(argv):
         print 'Caffe model NOT found...'
         sys.exit(2)
 
-
-    #CNN creation
     net = caffe.Net(model_filename,      # defines the structure of the model
                    weight_filename,  # contains the trained weights
                   caffe.TEST)     # use test mode (e.g., don't perform dropout)
 
 
-    train_images = 'train_images'
-    train_annotations = 'train_annotations'
+    train_imagesFolder = 'train_images'
+    train_annotationsFolder = 'train_annotations'
 
-    test_images = 'test_images'
-    test_annotations = 'test_annotations'
+    test_imagesFolder = 'test_images'
+    test_annotationsFolder = 'test_annotations'
 
-    percentage = 0.7
+    train_testPercentage = 0.7
 
-    [trainList, testList] = splitTrainTest(annotations_dir, interesting_labels, percentage)
+    [trainList, testList] = splitTrainTest(annotations_dir, classes, train_testPercentage)
 
-    [noveltySVM, multiclassSVM] = trainSVMsFromCroppedImages(net, cnn_type, trainList, images_dir,annotations_dir,  train_images, train_annotations, interesting_labels, gridsearch)
+    [noveltyCLS, multiclassSVM] = trainSVMsFromCroppedImages(net, cnn_type, trainList, images_dir,annotations_dir,  train_imagesFolder, train_annotationsFolder, mode, gridsearch)
     
-    test(net, cnn_type, noveltySVM, multiclassSVM, testList,images_dir,annotations_dir, test_images,  test_annotations, interesting_labels)
-
+    test(net, cnn_type, noveltyCLS, multiclassSVM, testList,images_dir,annotations_dir, test_imagesFolder,  test_annotationsFolder, mode)
 
 
 

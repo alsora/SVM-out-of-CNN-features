@@ -109,7 +109,7 @@ def cropImages(imagesSet, image_dir_in, images_dir_out, annotations_dict):
 
     return
 
-def extractBBoxesImages(imagesSet, images_dir_in, annotations_dir_in, images_dir_out, annotations_dir_out, interesting_labels):
+def extractBBoxesImages(imagesSet, images_dir_in, annotations_dir_in, images_dir_out, annotations_dir_out, interesting_labels = []):
 
 
     #if not isdir(annotations_dir_in) or not isdir(images_dir_in):
