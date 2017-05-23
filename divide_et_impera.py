@@ -30,7 +30,6 @@ def splitTrainTest(annotations_dir, interesting_labels, percentage):
                         images.append(name)
                         break
     numElements = len(images)
-    print numElements
     rangeImageIndices = range(numElements)
     numberTrainSample = int(round(percentage*numElements))   
     trainIndices = random.sample(rangeImageIndices, numberTrainSample) 
@@ -58,12 +57,12 @@ def getBBs(imagesSet, annotations_dir_in, annotations_dict, interesting_labels):
             label = object.find("name").text
             if label in interesting_labels or not interesting_labels:
                 bndbox = object.find("bndbox")
-                annotations_dict[name+"_"+str(obj_number)] = {}
-                annotations_dict[name+"_"+str(obj_number)]["xmin"] = bndbox.find("xmin").text
-                annotations_dict[name+"_"+str(obj_number)]["ymin"] = bndbox.find("ymin").text
-                annotations_dict[name+"_"+str(obj_number)]["xmax"] = bndbox.find("xmax").text
-                annotations_dict[name+"_"+str(obj_number)]["ymax"] = bndbox.find("ymax").text
-                annotations_dict[name+"_"+str(obj_number)]["label"] = label
+                annotations_dict[image+"_"+str(obj_number)] = {}
+                annotations_dict[image+"_"+str(obj_number)]["xmin"] = bndbox.find("xmin").text
+                annotations_dict[image+"_"+str(obj_number)]["ymin"] = bndbox.find("ymin").text
+                annotations_dict[image+"_"+str(obj_number)]["xmax"] = bndbox.find("xmax").text
+                annotations_dict[image+"_"+str(obj_number)]["ymax"] = bndbox.find("ymax").text
+                annotations_dict[image+"_"+str(obj_number)]["label"] = label
                 obj_number += 1
     return
 
@@ -93,12 +92,12 @@ def dumpDictToXMLs(images_dir_out, annotations_dir_out, annotations_dict):
 def cropImages(imagesSet, image_dir_in, images_dir_out, annotations_dict):
 
     for image_name in imagesSet:
-        image_name = image_name + ".jpg"
-        image_path = join(image_dir_in, image_name)
+        image_path = image_name + ".jpg"
+        image_path = join(image_dir_in, image_path)
         image = cv2.imread(image_path)
         #cv2.imshow("original", image)
         for key, features in annotations_dict.iteritems():
-            if name in key:
+            if image_name in key:
                 xmin = int(features["xmin"])
                 ymin = int(features["ymin"])
                 xmax = int(features["xmax"])
