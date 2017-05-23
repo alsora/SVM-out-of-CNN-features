@@ -12,8 +12,6 @@ def splitTrainTest(annotations_dir, interesting_labels, percentage):
     
     #images = "all_images.txt"
     images = []
-    trainFilename = "trainSet.txt"
-    testFilename = "testSet.txt"
 
     #with open (images,'w') as myfile:
     for root, dirs, files in walk(annotations_dir):
@@ -117,24 +115,21 @@ def extractBBoxesImages(imagesSet, images_dir_in, annotations_dir_in, images_dir
     #if not isdir(annotations_dir_in) or not isdir(images_dir_in):
     #    print "The input directories are not valid"
     #    sys.exit(2)
-    if not isdir(annotations_dir_out):
+    if not isdir(annotations_dir_out) or not isdir(images_dir_out):
         try:
             mkdir(annotations_dir_out)
-        except OSError as e:
-            print e
-            sys.exit(2)
-    if not isdir(images_dir_out):
-        try:
             mkdir(images_dir_out)
         except OSError as e:
             print e
             sys.exit(2)
+    else:
+        annotations_dict = {}
 
-    annotations_dict = {}
+        getBBs(imagesSet, annotations_dir_in, annotations_dict, interesting_labels)
+        dumpDictToXMLs(images_dir_out, annotations_dir_out, annotations_dict)
+        cropImages(imagesSet, images_dir_in, images_dir_out, annotations_dict)
 
-    getBBs(imagesSet, annotations_dir_in, annotations_dict, interesting_labels)
-    dumpDictToXMLs(images_dir_out, annotations_dir_out, annotations_dict)
-    cropImages(imagesSet, images_dir_in, images_dir_out, annotations_dict)
+    return
 
 
 

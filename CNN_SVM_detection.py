@@ -35,6 +35,9 @@ netLayers = {
 }
 
 
+def backspace(n):
+    sys.stdout.write('\r'+n)
+    sys.stdout.flush()
 
 
 
@@ -197,7 +200,7 @@ def test(net, networkName, noveltySVM, multiclassSVM, testList, images_dir_in, a
     correctClass = 0
     numPredicted = 0
 
-    for idx, featuresVec in enumerate(featureVectorsTest):
+    for idx, featuresVec in enumerate(featureVectorsTestNormalizedCentered):
 
         isInlier = noveltySVM.predict(featuresVec)
         #predict should return +1 or -1
@@ -247,7 +250,8 @@ def extractFeatures(imageSet, net, extractionLayerName):
         net.forward()
         features = net.blobs[extractionLayerName].data[0]
         featuresVector.append(features.copy().flatten())
-        print '\r {} of {}'.format(num, totalImages)
+        string_to_print = '{} of {}'.format(num, totalImages)
+        backspace(string_to_print)
     return featuresVector
 
 
@@ -352,9 +356,9 @@ def main(argv):
 
     [trainList, testList] = splitTrainTest(annotations_dir, interesting_labels, percentage)
 
-    [noveltySVM, multiclassSVM] = trainSVMsFromCroppedImages(net, cnn_type, trainList, images_dir,annotations_dir,  train_images, train_annotations,interesting_labels)
+    [noveltySVM, multiclassSVM] = trainSVMsFromCroppedImages(net, cnn_type, trainList, images_dir,annotations_dir,  train_images, train_annotations, interesting_labels)
     
-    test(net, cnn_type, noveltySVM, multiclassSVM, testList,images_dir,annotations_dir, test_images,  test_annotations,interesting_labels)
+    test(net, cnn_type, noveltySVM, multiclassSVM, testList,images_dir,annotations_dir, test_images,  test_annotations, interesting_labels)
 
 
 
