@@ -177,7 +177,22 @@ def test(net, networkName, noveltySVM, multiclassSVM, testList, images_dir_in, a
             (filesTestNames, featureVectorsTest) = pickle.load(testFeaturesFile)
             featureVectorsTest = np.array(featureVectorsTest)
 
-    
+    featureVectorsTestNormalized = []
+
+    for vec in featureVectorsTest:
+        vecNormalized = vec/np.linalg.norm(vec)
+        featureVectorsTestNormalized.append(vecNormalized)
+
+    testMean = np.mean(featureVectorsTestNormalized, axis = 0)
+
+    featureVectorsTestNormalizedCentered = []
+
+    for vec in featureVectorsTestNormalized:
+        vecCentered = vec - testMean
+        featureVectorsTestNormalizedCentered.append(vecCentered)
+
+
+
     correctOutlier = 0
     correctClass = 0
     numPredicted = 0
