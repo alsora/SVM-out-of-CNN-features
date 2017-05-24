@@ -1,5 +1,5 @@
 import xml.etree.ElementTree as ET
-
+import json
 
 
 
@@ -32,6 +32,11 @@ def createSamplesDatastructures(images_dir, annotations_dir, interesting_labels,
 
 
         return [samplesNames, samplesImages, samplesLabels]
+
+
+
+    			    		
+
 
 
 
