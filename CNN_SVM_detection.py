@@ -14,7 +14,7 @@ import argparse
 from sklearn.metrics import confusion_matrix
 from dataset_utils import createSamplesDatastructures, normalizeData, readLabelFromAnnotation
 
-from divide_et_impera import extractBBoxesImages, splitTrainTest
+from divide_et_impera import ImageCropper
 
 from caffe.io import array_to_blobproto
 from collections import defaultdict
@@ -30,17 +30,16 @@ netLayers = {
 
 }
 
-interesting_labels = {'voc':['aeroplane','bird','cat','boat','horse']}
+interesting_labels = {'voc':['aeroplane','bird','cat','boat','horse'],
+                        'coco': ['zebra']}
 
 
 
-def trainSVMsFromCroppedImages(net, networkName, trainList, images_dir_in, annotations_dir_in, images_dir_out, annotations_dir_out,mode, gridsearch = False):
+def trainSVMsFromCroppedImages(net, networkName, train_imagesFolder, train_annotationsFolder, datasetMode, gridsearch = False):
 
-    classes = interesting_labels[mode]
+    classes = interesting_labels[datasetMode]
 
-    extractBBoxesImages(trainList,images_dir_in,annotations_dir_in, images_dir_out, annotations_dir_out)
-
-    [filesTrainNames, imagesTrain, labelsTrain] = createSamplesDatastructures(images_dir_out, annotations_dir_out, classes, mode)
+    [filesTrainNames, imagesTrain, labelsTrain] = createSamplesDatastructures(train_imagesFolder, train_annotationsFolder, classes)
 
     trainFeaturesFileName = 'trainFeatures' + networkName + '.b'
 
@@ -151,13 +150,11 @@ def trainSVMsFromCroppedImages(net, networkName, trainList, images_dir_in, annot
 
 
 
-def test(net, networkName, noveltyCLS, multiclassSVM, testList, images_dir_in, annotations_dir_in, images_dir_out, annotations_dir_out,mode):
+def test(net, networkName, noveltyCLS, multiclassSVM, test_imagesFolder, test_annotationsFolder, datasetMode):
 
-    classes = interesting_labels[mode]
+    classes = interesting_labels[datasetMode]
 
-    extractBBoxesImages(testList,images_dir_in,annotations_dir_in, images_dir_out, annotations_dir_out)
-
-    [filesTestNames, imagesTest, labelsTest] = createSamplesDatastructures(images_dir_out, annotations_dir_out, classes, mode)
+    [filesTestNames, imagesTest, labelsTest] = createSamplesDatastructures(test_imagesFolder, test_annotationsFolder, classes)
 
     testFeaturesFileName = 'testFeatures' + networkName + '.b'
 
@@ -348,13 +345,21 @@ def main(argv):
     test_imagesFolder = 'test_images'
     test_annotationsFolder = 'test_annotations'
 
-    train_testPercentage = 0.7
+    trainPercentage = 0.7
 
-    [trainList, testList] = splitTrainTest(annotations_dir, classes, train_testPercentage)
+    classes = interesting_labels[mode]
 
-    [noveltyCLS, multiclassSVM] = trainSVMsFromCroppedImages(net, cnn_type, trainList, images_dir,annotations_dir,  train_imagesFolder, train_annotationsFolder, mode, gridsearch)
+    imageCropper = ImageCropper(images_dir, annotations_dir,train_imagesFolder, train_annotationsFolder,test_imagesFolder,test_annotationsFolder, mode)
+
+    trainList, testList = imageCropper.splitTrainTest(classes, trainPercentage)
+
+
+    imageCropper.extractBBoxesImages(trainList, 'train')
+    imageCropper.extractBBoxesImages(testList, 'test')
+
+   # noveltyCLS, multiclassSVM = trainSVMsFromCroppedImages(net, cnn_type, train_imagesFolder, train_annotationsFolder, mode, gridsearch)
     
-    test(net, cnn_type, noveltyCLS, multiclassSVM, testList,images_dir,annotations_dir, test_imagesFolder,  test_annotationsFolder, mode)
+   # test(net, cnn_type, noveltyCLS, multiclassSVM, test_imagesFolder, test_annotationsFolder, mode)
 
 
 

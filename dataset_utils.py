@@ -1,9 +1,10 @@
 import xml.etree.ElementTree as ET
 import json
+from os import walk
 
 
 
-def createSamplesDatastructures(images_dir, annotations_dir, interesting_labels, mode):
+def createSamplesDatastructures(images_dir, annotations_dir, interesting_labels):
 
 
     samplesNames = []
@@ -11,27 +12,26 @@ def createSamplesDatastructures(images_dir, annotations_dir, interesting_labels,
     samplesLabels = []
 
 
-    if mode == 'voc':
 
-        for root, dirs, files in os.walk(images_dir):
-            for image_name in files:
-                name, extension = image_name.split(".")
+    for root, dirs, files in walk(images_dir):
+        for image_name in files:
+            name, extension = image_name.split(".")
 
-                samplesNames.append(name)
+            samplesNames.append(name)
 
-                imageCompletePath = images_dir + '/' + image_name
-                image = caffe.io.load_image(imageCompletePath)
-                samplesImages.append(image)
+            imageCompletePath = images_dir + '/' + image_name
+            image = caffe.io.load_image(imageCompletePath)
+            samplesImages.append(image)
 
-                annotationCompletePath = annotations_dir + '/' + name + '.xml'
-                label = readLabelFromAnnotation(annotationCompletePath, interesting_labels)
-                samplesLabels.append(label)
+            annotationCompletePath = annotations_dir + '/' + name + '.xml'
+            label = readLabelFromAnnotation(annotationCompletePath, interesting_labels)
+            samplesLabels.append(label)
 
-        imagesFolderPath = images_dir
-        annotationsFolderPath = annotations_dir
+    imagesFolderPath = images_dir
+    annotationsFolderPath = annotations_dir
 
 
-        return [samplesNames, samplesImages, samplesLabels]
+    return [samplesNames, samplesImages, samplesLabels]
 
 
 
