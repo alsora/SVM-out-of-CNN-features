@@ -1,6 +1,8 @@
 import xml.etree.ElementTree as ET
 import json
 from os import walk
+import numpy as np
+import caffe
 
 
 
@@ -11,7 +13,7 @@ def createSamplesDatastructures(images_dir, annotations_dir, interesting_labels)
     samplesImages = []
     samplesLabels = []
 
-
+    print type(interesting_labels[0])
 
     for root, dirs, files in walk(images_dir):
         for image_name in files:
@@ -50,7 +52,7 @@ def normalizeData(featuresVector):
 		vecNormalized = vec/np.linalg.norm(vec)
 		featureVectorsNormalized.append(vecNormalized)
 
-	mean = np.mean(featureVectorsTrainNormalized, axis = 0)
+	mean = np.mean(featureVectorsNormalized, axis = 0)
 
 	featureVectorsNormalizedCentered = []
 

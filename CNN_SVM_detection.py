@@ -1,6 +1,6 @@
 # set up Python environment: numpy for numerical routines, and matplotlib for plotting
 import os
-os.environ['GLOG_minloglevel'] = '3' 
+os.environ['GLOG_minloglevel'] = '3'
 
 import caffe
 import itertools
@@ -25,19 +25,20 @@ from sklearn.model_selection import GridSearchCV
 
 netLayers = {
     'googlenet':'pool5/7x7_s1',
+    #'googlenet':'loss3/classifier',
     'vggnet':'fc8',
-    'resnet':'fc1000'
-
+    #'vggnet':'fc7',
+    'resnet':'fc1000',
+    #'resnet':'pool5'
 }
 
 interesting_labels = {'voc':['aeroplane','bird','cat','boat','horse'],
-                        'coco': ['zebra']}
+                      'coco': ['snowboard', 'giraffe', 'cow', 'scissors', 'frisbee']}
 
 
 
-def trainSVMsFromCroppedImages(net, networkName, train_imagesFolder, train_annotationsFolder, datasetMode, gridsearch = False):
+def trainSVMsFromCroppedImages(net, networkName, train_imagesFolder, train_annotationsFolder, datasetMode, classes,  gridsearch = False):
 
-    classes = interesting_labels[datasetMode]
 
     [filesTrainNames, imagesTrain, labelsTrain] = createSamplesDatastructures(train_imagesFolder, train_annotationsFolder, classes)
 
@@ -49,7 +50,7 @@ def trainSVMsFromCroppedImages(net, networkName, train_imagesFolder, train_annot
 
         transformer = caffe.io.Transformer({'data': net.blobs['data'].data.shape})
         transformer.set_transpose('data', (2,0,1)) #move image channels to outermost dimension 
-        transformer.set_raw_scale('data', imagesScale) 
+        transformer.set_raw_scale('data', imagesScale)
 
         #Update the sets of images by transforming them according to Transformer
         for  index in range(len(imagesTrain)):
@@ -68,7 +69,7 @@ def trainSVMsFromCroppedImages(net, networkName, train_imagesFolder, train_annot
 
     else:
 
-        print 'Opening old features.... '
+        print 'Opening old features from ', trainFeaturesFileName
         #Load features from a previously dumped file
         with open(trainFeaturesFileName, 'rb') as trainFeaturesFile:
             (filesTrainNames, featureVectorsTrain) = pickle.load(trainFeaturesFile)
@@ -76,69 +77,76 @@ def trainSVMsFromCroppedImages(net, networkName, train_imagesFolder, train_annot
 
 
 
-	interestingIndices = [idx for idx, x in enumerate(labelsTrain) if x is not  'unknown']
+    interestingIndices = [idx for idx, x in enumerate(labelsTrain) if x is not  'unknown']
 
-	interestingImagesTrain = [x for idx, x in enumerate(imagesTrain) if idx in interestingIndices]
-	interestingLabelsTrain = [x for idx, x in enumerate(labelsTrain) if idx in interestingIndices]
-	interestingFeaturesVectorTrain = [x for idx, x in enumerate(featureVectorsTrain) if idx in interestingIndices]
+    interestingImagesTrain = [x for idx, x in enumerate(imagesTrain) if idx in interestingIndices]
+    interestingLabelsTrain = [x for idx, x in enumerate(labelsTrain) if idx in interestingIndices]
+    interestingFeaturesVectorTrain = [x for idx, x in enumerate(featureVectorsTrain) if idx in interestingIndices]
 
-	inlier_outlierLabels = [1 if idx in interestingIndices else -1 for idx in range(len(labelsTrain))]
+    inlier_outlierLabels = [1 if idx in interestingIndices else -1 for idx in range(len(labelsTrain))]
 
 
-	featureVectorsTrain = normalizeData(featureVectorsTrain)
+    featureVectorsTrain = normalizeData(featureVectorsTrain)
 
-	interestingFeaturesVectorTrain = normalizeData(interestingFeaturesVectorTrain)
+    interestingFeaturesVectorTrain = normalizeData(interestingFeaturesVectorTrain)
+
+    print len(interestingFeaturesVectorTrain)
+
 
 
     if gridsearch:
 
-		nu =  [x for x in np.logspace(-4, 0, 20)]  
-		gamma = [x for x in np.logspace(-4,0,20)]
-		C = [x for x in np.logspace(-1, 10, 30)]
-		n_estimators = [int(round(x)) for x in np.logspace(1, 5, 20)]
-		contamination = [x for x in np.linspace(0, 0.5, 10)]
-		classifiers = {
-		"oneClass": (svm.OneClassSVM(),{"nu": nu,
-		"gamma": gamma}),
-		"2Class": (svm.SVC(),{"C": C}),
-		"Forest": (IsolationForest(),{"n_estimators": n_estimators,
-		"contamination": contamination}	)	}
+        nu =  [x for x in np.logspace(-4, 0, 20)]
+        gamma = [x for x in np.logspace(-4,0,20)]
+        C = [x for x in np.logspace(-1, 10, 30)]
+        n_estimators = [int(round(x)) for x in np.logspace(1, 5, 20)]
+        contamination = [x for x in np.linspace(0, 0.5, 10)]
+        classifiers = {
+            "oneClass": (svm.OneClassSVM(),{"nu": nu,
+                                            "gamma": gamma}),
+            "2Class": (svm.SVC(),{"C": C}),
+            "Forest": (IsolationForest(),{"n_estimators": n_estimators,
+                                          "contamination": contamination}	)	}
 
-		score = 0
+        score = 0
 
-	
-		for name_estimator, (estimator, params) in classifiers.iteritems():
-		    print name_estimator
-		    clf = GridSearchCV(estimator, params, n_jobs = -1, cv = 5, scoring = "accuracy")
-		    if name_estimator is "oneClass" or name_estimator is "Forest":
-		        
-		        trainDataSet = np.asarray(interestingFeaturesVectorTrain)
-		        labels = [1 for x in range(len(interestingFeaturesVectorTrain))]
-		      
-		        clf.fit(trainDataSet, labels)
-		   
-		    else:
-		        
-		        trainDataSet = featureVectorsTrain
-		        labels = inlier_outlierLabels
 
-		        clf.fit(trainDataSet, labels)
+        for name_estimator, (estimator, params) in classifiers.iteritems():
+            print name_estimator
+            clf = GridSearchCV(estimator, params, n_jobs = -1, cv = 5, scoring = "accuracy")
+            if name_estimator is "oneClass" or name_estimator is "Forest":
 
-		    print "Estimator: ", name_estimator, "\n", clf.best_params_, " score: ", clf.best_score_   
+                trainDataSet = np.asarray(interestingFeaturesVectorTrain)
+                labels = [1 for x in range(len(interestingFeaturesVectorTrain))]
 
-		    if clf.best_score_ > score:
-		        score = clf.best_score_
-		        noveltyCLS = clf.best_estimator_
+                clf.fit(trainDataSet, labels)
+
+            else:
+
+                trainDataSet = featureVectorsTrain
+                labels = inlier_outlierLabels
+
+                clf.fit(trainDataSet, labels)
+
+            print "Estimator: ", name_estimator, "\n", clf.best_params_, " score: ", clf.best_score_
+
+            if clf.best_score_ > score:
+                score = clf.best_score_
+                noveltyCLS = clf.best_estimator_
 
 
     else:
 
-		noveltyCLS = svm.OneClassSVM(nu=0.013, kernel = "rbf", gamma = 0.0078)
-		noveltyCLS.fit(interestingFeaturesVectorTrain)
-        
-		#noveltyCLS = svm.SVC(C=621.017, kernel = "rbf")
-		#noveltyCLS.fit(featureVectorsTrain, inlier_outlierLabels)
-    
+        #noveltyCLS = svm.OneClassSVM(nu=0.013, kernel = "rbf", gamma = 0.0078)
+        #noveltyCLS.fit(interestingFeaturesVectorTrain)
+
+        noveltyCLS = svm.SVC(C=621.017, kernel = "rbf")
+        print len(featureVectorsTrain)
+        print len(inlier_outlierLabels)
+        print len(interestingFeaturesVectorTrain)
+        print len(interestingLabelsTrain)
+        noveltyCLS.fit(featureVectorsTrain, inlier_outlierLabels)
+
 
 
     multiclassSVM = svm.SVC(kernel="rbf", C=1e6, probability=True)
@@ -150,9 +158,8 @@ def trainSVMsFromCroppedImages(net, networkName, train_imagesFolder, train_annot
 
 
 
-def test(net, networkName, noveltyCLS, multiclassSVM, test_imagesFolder, test_annotationsFolder, datasetMode):
+def test(net, networkName, noveltyCLS, multiclassSVM, test_imagesFolder, test_annotationsFolder, datasetMode, classes):
 
-    classes = interesting_labels[datasetMode]
 
     [filesTestNames, imagesTest, labelsTest] = createSamplesDatastructures(test_imagesFolder, test_annotationsFolder, classes)
 
@@ -163,13 +170,13 @@ def test(net, networkName, noveltyCLS, multiclassSVM, test_imagesFolder, test_an
 
         transformer = caffe.io.Transformer({'data': net.blobs['data'].data.shape})
         transformer.set_transpose('data', (2,0,1)) #move image channels to outermost dimension 
-        transformer.set_raw_scale('data', imagesScale) 
+        transformer.set_raw_scale('data', imagesScale)
 
         #Update the sets of images by transforming them according to Transformer
         for  index in range(len(imagesTest)):
             imagesTest[index] = transformer.preprocess('data', imagesTest[index])
 
-        
+
         extractionLayerName = netLayers[networkName]
         t1 = time.time()
         featureVectorsTest = extractFeatures(imagesTest, net, extractionLayerName)
@@ -199,32 +206,42 @@ def test(net, networkName, noveltyCLS, multiclassSVM, test_imagesFolder, test_an
 
     isInliers = noveltyCLS.predict(featureVectorsTest)
     predictions = multiclassSVM.predict(featureVectorsTest)
-	
-	
+
+    truePredicted = []
+    inlierPredicted = []
+
     for idx, isInlier in enumerate(isInliers):
-        
-        isInlier = int(isInlier)		
+
+        isInlier = int(isInlier)
         if isInlier == -1 and labelsTest[idx] == 'unknown':
             correctOutlier+=1
         if isInlier == 1 and labelsTest[idx] is not 'unknown':
             correctInlier+=1
-        
+            truePredicted.append(labelsTest[idx])
+            inlierPredicted.append(predictions[idx])
+
 
         if isInlier == 1:
             numPredicted+=1
+           
             if predictions[idx] == labelsTest[idx]:
                 correctClass+=1
 
     numInterestingSamples = sum(i is not 'unknown' for i in labelsTest)
-    numSamples = len(labelsTest)    
+    numSamples = len(labelsTest)
     print 'num interesting labels {}\nunknown {}\ntotal {}\ncorrect outliers {}\ncorrect inlier {}'.format(numInterestingSamples, numSamples-numInterestingSamples, numSamples, correctOutlier, correctInlier)
-    
+
     precision = 100.*correctClass/numPredicted
     recall = 100.*correctClass/numInterestingSamples
     accuracy = 100.*(correctClass + correctOutlier)/numSamples
     noveltyPrecision = 100.* (correctOutlier + correctInlier)/numSamples
 
-    print 'Accuracy: ', accuracy, ' Precision: ', precision, ' Recall: ', recall
+    cnf_matrix = confusion_matrix(truePredicted, inlierPredicted)
+    plot_confusion_matrix(cnf_matrix, classes = classes)
+
+
+
+    print 'Accuracy: ', accuracy, ' Precision: ', precision, ' Recall: ', recall, ' Novelty precision: ', noveltyPrecision
 
 
 def backspace(n):
@@ -297,7 +314,7 @@ def main(argv):
     parser.add_argument("-p", "--prototxt", help="prototxt file")
     parser.add_argument("-i", "--input_im", help="input images dir")
     parser.add_argument("-a", "--annotations_dir", help="input annotations dir")
-    parser.add_argument("-t", "--dataset_type", help="dataset type (voc/imagenet/coco)")    
+    parser.add_argument("-t", "--dataset_type", help="dataset type (voc/imagenet/coco)")
     parser.add_argument("-n", "--net_type", help="cnn type (resnet/googlenet/vggnet")
     parser.add_argument("-g", "--gpu", help="enable gpu mode", action='store_true')
     parser.add_argument("-s", "--search", help="enable gridsearch", action='store_true')
@@ -312,12 +329,12 @@ def main(argv):
     if args.annotations_dir:
         annotations_dir = args.annotations_dir
     if args.dataset_type:
-    	mode = args.dataset_type
+        mode = args.dataset_type
     if args.net_type:
-    	cnn_type = args.net_type
+        cnn_type = args.net_type
     if args.gpu:
-		caffe.set_mode_gpu()
-		caffe.set_device(0)
+        caffe.set_mode_gpu()
+        caffe.set_device(0)
     if args.search:
         gridsearch = True
 
@@ -326,7 +343,7 @@ def main(argv):
     print 'weight file is ', weight_filename
     print 'images dir is ', images_dir
     print 'annotations dir is ', annotations_dir
-    print 'the cnn is ', cnn_type	    
+    print 'the cnn is ', cnn_type
 
     if os.path.isfile(model_filename):
         print 'Caffe model found.'
@@ -335,8 +352,8 @@ def main(argv):
         sys.exit(2)
 
     net = caffe.Net(model_filename,      # defines the structure of the model
-                   weight_filename,  # contains the trained weights
-                  caffe.TEST)     # use test mode (e.g., don't perform dropout)
+                    weight_filename,  # contains the trained weights
+                    caffe.TEST)     # use test mode (e.g., don't perform dropout)
 
 
     train_imagesFolder = 'train_images'
@@ -349,7 +366,14 @@ def main(argv):
 
     classes = interesting_labels[mode]
 
+    print classes
+
     imageCropper = ImageCropper(images_dir, annotations_dir,train_imagesFolder, train_annotationsFolder,test_imagesFolder,test_annotationsFolder, mode)
+
+   # if mode == 'coco':
+   #    imageCropper.downloadCoco(classes,500)
+
+
 
     trainList, testList = imageCropper.splitTrainTest(classes, trainPercentage)
 
@@ -357,11 +381,14 @@ def main(argv):
     imageCropper.extractBBoxesImages(trainList, 'train')
     imageCropper.extractBBoxesImages(testList, 'test')
 
-   # noveltyCLS, multiclassSVM = trainSVMsFromCroppedImages(net, cnn_type, train_imagesFolder, train_annotationsFolder, mode, gridsearch)
+    if mode == 'coco':
+        classes = imageCropper.getCocoCategoriesId(classes)
+
+    noveltyCLS, multiclassSVM = trainSVMsFromCroppedImages(net, cnn_type, train_imagesFolder, train_annotationsFolder, mode, classes, gridsearch)
+
+    test(net, cnn_type, noveltyCLS, multiclassSVM, test_imagesFolder, test_annotationsFolder, mode, classes)
+
     
-   # test(net, cnn_type, noveltyCLS, multiclassSVM, test_imagesFolder, test_annotationsFolder, mode)
 
-
-
-if __name__=='__main__':	
+if __name__=='__main__':
     main(sys.argv[1:])
