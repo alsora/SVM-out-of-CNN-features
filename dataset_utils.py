@@ -1,19 +1,13 @@
 import xml.etree.ElementTree as ET
-import json
 from os import walk
 import numpy as np
 import caffe
 
 
-
 def createSamplesDatastructures(images_dir, annotations_dir, interesting_labels):
-
-
     samplesNames = []
     samplesImages = []
     samplesLabels = []
-
-    print type(interesting_labels[0])
 
     for root, dirs, files in walk(images_dir):
         for image_name in files:
@@ -29,45 +23,30 @@ def createSamplesDatastructures(images_dir, annotations_dir, interesting_labels)
             label = readLabelFromAnnotation(annotationCompletePath, interesting_labels)
             samplesLabels.append(label)
 
-    imagesFolderPath = images_dir
-    annotationsFolderPath = annotations_dir
-
-
     return [samplesNames, samplesImages, samplesLabels]
-
-
-
-    			    		
-
-
-
 
 
 def normalizeData(featuresVector):
 
+    featureVectorsNormalized = []
 
-	featureVectorsNormalized = []
+    for vec in featuresVector:
+        vecNormalized = vec / np.linalg.norm(vec)
+        featureVectorsNormalized.append(vecNormalized)
 
-	for vec in featuresVector:
-		vecNormalized = vec/np.linalg.norm(vec)
-		featureVectorsNormalized.append(vecNormalized)
+    mean = np.mean(featureVectorsNormalized, axis=0)
 
-	mean = np.mean(featureVectorsNormalized, axis = 0)
+    featureVectorsNormalizedCentered = []
 
-	featureVectorsNormalizedCentered = []
+    for vec in featureVectorsNormalized:
+        vecCentered = vec - mean
+        featureVectorsNormalizedCentered.append(vecCentered)
 
-	for vec in featureVectorsNormalized:
-		vecCentered = vec - mean
-		featureVectorsNormalizedCentered.append(vecCentered)
-
-
-	return featureVectorsNormalizedCentered
-
-
+    return featureVectorsNormalizedCentered
 
 
 def readLabelFromAnnotation(annotationFileName, interesting_labels):
-    #Parse the given annotation file and read the label
+    # Parse the given annotation file and read the label
 
     tree = ET.parse(annotationFileName)
     root = tree.getroot()

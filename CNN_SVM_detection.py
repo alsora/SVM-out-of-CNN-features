@@ -16,29 +16,24 @@ from dataset_utils import createSamplesDatastructures, normalizeData, readLabelF
 
 from divide_et_impera import ImageCropper
 
-from caffe.io import array_to_blobproto
-from collections import defaultdict
-from skimage import io
 from sklearn.ensemble import IsolationForest
 from sklearn.model_selection import GridSearchCV
 
 
 netLayers = {
-    'googlenet':'pool5/7x7_s1',
-    #'googlenet':'loss3/classifier',
+    'googlenet': 'pool5/7x7_s1',
+    #'googlenet': 'loss3/classifier',
     'vggnet':'fc8',
-    #'vggnet':'fc7',
-    'resnet':'fc1000',
-    #'resnet':'pool5'
+    #'vggnet': 'fc7',
+    'resnet': 'fc1000',
+    #'resnet': 'pool5'
 }
 
-interesting_labels = {'voc':['aeroplane','bird','cat','boat','horse'],
+interesting_labels = {'voc': ['aeroplane', 'bird', 'cat', 'boat', 'horse'],
                       'coco': ['snowboard', 'giraffe', 'cow', 'scissors', 'frisbee']}
 
 
-
-def trainSVMsFromCroppedImages(net, networkName, train_imagesFolder, train_annotationsFolder, datasetMode, classes,  gridsearch = False):
-
+def trainSVMsFromCroppedImages(net, networkName, train_imagesFolder, train_annotationsFolder, classes,  gridsearch = False):
 
     [filesTrainNames, imagesTrain, labelsTrain] = createSamplesDatastructures(train_imagesFolder, train_annotationsFolder, classes)
 
@@ -79,7 +74,6 @@ def trainSVMsFromCroppedImages(net, networkName, train_imagesFolder, train_annot
 
     interestingIndices = [idx for idx, x in enumerate(labelsTrain) if x is not  'unknown']
 
-    interestingImagesTrain = [x for idx, x in enumerate(imagesTrain) if idx in interestingIndices]
     interestingLabelsTrain = [x for idx, x in enumerate(labelsTrain) if idx in interestingIndices]
     interestingFeaturesVectorTrain = [x for idx, x in enumerate(featureVectorsTrain) if idx in interestingIndices]
 
@@ -113,7 +107,7 @@ def trainSVMsFromCroppedImages(net, networkName, train_imagesFolder, train_annot
 
         for name_estimator, (estimator, params) in classifiers.iteritems():
             print name_estimator
-            clf = GridSearchCV(estimator, params, n_jobs = -1, cv = 5, scoring = "accuracy")
+            clf = GridSearchCV(estimator, params, n_jobs=-1, cv=5, scoring="accuracy")
             if name_estimator is "oneClass" or name_estimator is "Forest":
 
                 trainDataSet = np.asarray(interestingFeaturesVectorTrain)
@@ -158,7 +152,7 @@ def trainSVMsFromCroppedImages(net, networkName, train_imagesFolder, train_annot
 
 
 
-def test(net, networkName, noveltyCLS, multiclassSVM, test_imagesFolder, test_annotationsFolder, datasetMode, classes):
+def test(net, networkName, noveltyCLS, multiclassSVM, test_imagesFolder, test_annotationsFolder, classes):
 
 
     [filesTestNames, imagesTest, labelsTest] = createSamplesDatastructures(test_imagesFolder, test_annotationsFolder, classes)
@@ -173,13 +167,13 @@ def test(net, networkName, noveltyCLS, multiclassSVM, test_imagesFolder, test_an
         transformer.set_raw_scale('data', imagesScale)
 
         #Update the sets of images by transforming them according to Transformer
-        for  index in range(len(imagesTest)):
+        for index in range(len(imagesTest)):
             imagesTest[index] = transformer.preprocess('data', imagesTest[index])
-
 
         extractionLayerName = netLayers[networkName]
         t1 = time.time()
         featureVectorsTest = extractFeatures(imagesTest, net, extractionLayerName)
+
         print '\nFeatures extraction took ',(time.time() - t1) ,' seconds for ', len(imagesTest), ' images'
 
         #Dump features in a file 
@@ -239,8 +233,6 @@ def test(net, networkName, noveltyCLS, multiclassSVM, test_imagesFolder, test_an
     cnf_matrix = confusion_matrix(truePredicted, inlierPredicted)
     plot_confusion_matrix(cnf_matrix, classes = classes)
 
-
-
     print 'Accuracy: ', accuracy, ' Precision: ', precision, ' Recall: ', recall, ' Novelty precision: ', noveltyPrecision
 
 
@@ -288,12 +280,13 @@ def plot_confusion_matrix(cm, classes,
                  horizontalalignment="center",
                  color="white" if cm[i, j] > thresh else "black")
 
-    #print(cm)
 
     plt.tight_layout()
     plt.ylabel('True labels')
     plt.xlabel('Predicted labels')
     plt.savefig("confusion_matrix.png")
+
+    return
 
 
 
@@ -384,9 +377,10 @@ def main(argv):
     if mode == 'coco':
         classes = imageCropper.getCocoCategoriesId(classes)
 
-    noveltyCLS, multiclassSVM = trainSVMsFromCroppedImages(net, cnn_type, train_imagesFolder, train_annotationsFolder, mode, classes, gridsearch)
+    noveltyCLS, multiclassSVM = trainSVMsFromCroppedImages(net, cnn_type, train_imagesFolder,
+                                                           train_annotationsFolder, classes, gridsearch)
 
-    test(net, cnn_type, noveltyCLS, multiclassSVM, test_imagesFolder, test_annotationsFolder, mode, classes)
+    test(net, cnn_type, noveltyCLS, multiclassSVM, test_imagesFolder, test_annotationsFolder, classes)
 
     
 

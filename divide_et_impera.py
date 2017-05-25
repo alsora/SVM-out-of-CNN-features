@@ -1,13 +1,9 @@
 import xml.etree.cElementTree as ET
-
 from os import walk, mkdir, remove, stat, listdir
-from os.path import join, isdir, isfile
-import argparse
+from os.path import join, isdir
 import sys
 import cv2
-from collections import OrderedDict
-import random 
-import math
+import random
 from pycocotools.coco import COCO
 import re
 
@@ -35,8 +31,8 @@ class ImageCropper:
                     if jsonAnnotationPath:
                         break
 
-
     def downloadCoco(self, interestingLabels, maxNumIm = 100):
+
         catIds = self.coco.getCatIds(catNms=interestingLabels)
         imgIds = []
 
@@ -50,13 +46,10 @@ class ImageCropper:
 
         self.coco.download(tarDir = self.image_dir_in, imgIds=imgIds)
 
-
     def splitTrainTest(self, interesting_labels, percentage):
         
-        #images = "all_images.txt"
         images = []
 
-        #with open (images,'w') as myfile:
         for root, dirs, files in walk(self.annotations_dir_in):
             for file in files:
                 name, extension = file.split(".")
@@ -92,7 +85,6 @@ class ImageCropper:
 
                             matchedIDs.append(matched)
 
-
                     images = [x for x in images if str(x) in matchedIDs]
 
                     break
@@ -114,11 +106,7 @@ class ImageCropper:
 
         return trainSet, testSet
 
-
-
-
     def getBBs(self, imagesSet, annotations_dict, interesting_labels):
-
 
         if self.mode == 'voc':
 
@@ -146,21 +134,20 @@ class ImageCropper:
             annotationsIDs = self.coco.getAnnIds(imgIds=imagesSet)
             annotations = self.coco.loadAnns(ids=annotationsIDs)
 
-            #print annotations[0]
             for annotation in annotations:
- 
                 obj_number = 0
-                
                 bndbox = annotation['bbox']
 
                 imageID = str(annotation['image_id'])
                 label = str(annotation['category_id'])
+
                 annotations_dict[imageID+"_"+str(obj_number)] = {}
                 annotations_dict[imageID+"_"+str(obj_number)]["xmin"] = str(int(round(bndbox[0])))
                 annotations_dict[imageID+"_"+str(obj_number)]["ymin"] = str(int(round(bndbox[1])))
                 annotations_dict[imageID+"_"+str(obj_number)]["xmax"] = str(int(round(bndbox[0] + bndbox[2])))
                 annotations_dict[imageID+"_"+str(obj_number)]["ymax"] = str(int(round(bndbox[0] + bndbox[3])))
                 annotations_dict[imageID+"_"+str(obj_number)]["label"] = label
+
                 obj_number += 1
 
             return
@@ -171,7 +158,6 @@ class ImageCropper:
     def dumpDictToXMLs(self, annotations_dict, images_dir_out, annotations_dir_out):
 
         for filename, features in annotations_dict.iteritems():
-            #image_name = filename.split(".")[0]
             root = ET.Element("annotation")
 
             ET.SubElement(root, "folder").text = images_dir_out
@@ -189,8 +175,6 @@ class ImageCropper:
             tree.write(join(annotations_dir_out, filename)+".xml")
 
         return
-
-
 
     def cropImages(self, imagesSet, annotations_dict, images_dir_out):
 
@@ -216,7 +200,6 @@ class ImageCropper:
 
             return
 
-
         elif self.mode == 'coco':
 
             for key, features in annotations_dict.iteritems():
@@ -235,10 +218,7 @@ class ImageCropper:
                 out_path = join(images_dir_out, key+".jpg")
                 cv2.imwrite(out_path, cropped_image)
 
-
             return
-
-
 
     def filterImages(self, images_dir_out, annotations_dir_out):
 
@@ -249,8 +229,7 @@ class ImageCropper:
                 idName = file.split('.')[0]
                 xmlPath = join(annotations_dir_out, idName + '.xml')
                 remove(xmlPath)
-
-
+        return
 
     def getCocoCategoriesId(self, interesting_labels):
         
@@ -263,12 +242,7 @@ class ImageCropper:
             print 'YOU ARE NOT USING COCO MODE!!!!!'
             sys.exit(2)
 
-
-
-
-
-
-    def extractBBoxesImages(self, imagesSet, mode, interesting_labels = []):
+    def extractBBoxesImages(self, imagesSet, mode, interesting_labels=[]):
 
         if mode == 'train':
             images_dir_out = self.image_dir_out_train
@@ -280,8 +254,6 @@ class ImageCropper:
             print "WRONG MODE: YOU HAVE TO USE train or test"
             sys.exit(2)            
 
-
-       
         if not isdir(annotations_dir_out) or not isdir(images_dir_out):
             try:
                 mkdir(annotations_dir_out)
@@ -295,7 +267,8 @@ class ImageCropper:
             self.dumpDictToXMLs(annotations_dict, images_dir_out, annotations_dir_out)
             self.cropImages(imagesSet, annotations_dict, images_dir_out)
             self.filterImages(images_dir_out, annotations_dir_out)
-        
+            return
+
         else:
             print 'Both output folders already exist'
             return
