@@ -12,6 +12,9 @@ You need the following dependencies:
 Create a folder called prototxt containing the .prototxt files of the network you want to use.
 Create a folder called weights containing the .caffemodel files of the network you want to use.
 
+NOTE: supported networks are VGG16, RESNET101, GOOGLENET.
+Adding a new network is straightforward: simply look at where the -n parameter is used and add a field for the network of interest.
+
 For PascalVOC: create a folder containing the JPEGImages and a folder containing the .xml annotation files.
 For MS COCO: create a folder containing the .json annotations file. The images are optional, can be downloaded automatically when executing the main program.
 
